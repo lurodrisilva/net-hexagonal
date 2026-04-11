@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hex.Scaffold.Domain\Hex.Scaffold.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Hex.Scaffold.Application\Hex.Scaffold.Application.csproj" />
+    <ProjectReference Include="..\..\src\Hex.Scaffold.Adapters.Inbound\Hex.Scaffold.Adapters.Inbound.csproj" />
+    <ProjectReference Include="..\..\src\Hex.Scaffold.Adapters.Outbound\Hex.Scaffold.Adapters.Outbound.csproj" />
+    <ProjectReference Include="..\..\src\Hex.Scaffold.Adapters.Persistence\Hex.Scaffold.Adapters.Persistence.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+</Project>

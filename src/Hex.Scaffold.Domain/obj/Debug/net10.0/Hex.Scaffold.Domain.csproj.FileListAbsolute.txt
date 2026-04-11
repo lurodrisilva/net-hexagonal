@@ -1,0 +1,12 @@
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/bin/Debug/net10.0/Hex.Scaffold.Domain.deps.json
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/bin/Debug/net10.0/Hex.Scaffold.Domain.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/bin/Debug/net10.0/Hex.Scaffold.Domain.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.csproj.AssemblyReference.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.GeneratedMSBuildEditorConfig.editorconfig
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.AssemblyInfoInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.AssemblyInfo.cs
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.csproj.CoreCompileInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/refint/Hex.Scaffold.Domain.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/Hex.Scaffold.Domain.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/obj/Debug/net10.0/ref/Hex.Scaffold.Domain.dll

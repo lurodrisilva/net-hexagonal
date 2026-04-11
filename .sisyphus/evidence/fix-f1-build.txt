@@ -1,0 +1,19 @@
+  Determining projects to restore...
+  Restored /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj (in 174 ms).
+  Restored /Users/lucianosilva/src/open-source/net-hexagonal/tests/Hex.Scaffold.Tests.Integration/Hex.Scaffold.Tests.Integration.csproj (in 174 ms).
+  7 of 9 projects are up-to-date for restore.
+  Hex.Scaffold.Domain -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Domain/bin/Debug/net10.0/Hex.Scaffold.Domain.dll
+  Hex.Scaffold.Adapters.Outbound -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.dll
+  Hex.Scaffold.Application -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Application/bin/Debug/net10.0/Hex.Scaffold.Application.dll
+  Hex.Scaffold.Adapters.Persistence -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Persistence/bin/Debug/net10.0/Hex.Scaffold.Adapters.Persistence.dll
+  Hex.Scaffold.Adapters.Inbound -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.dll
+  Hex.Scaffold.Tests.Unit -> /Users/lucianosilva/src/open-source/net-hexagonal/tests/Hex.Scaffold.Tests.Unit/bin/Debug/net10.0/Hex.Scaffold.Tests.Unit.dll
+  Hex.Scaffold.Tests.Architecture -> /Users/lucianosilva/src/open-source/net-hexagonal/tests/Hex.Scaffold.Tests.Architecture/bin/Debug/net10.0/Hex.Scaffold.Tests.Architecture.dll
+  Hex.Scaffold.Api -> /Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Api/bin/Debug/net10.0/Hex.Scaffold.Api.dll
+  Hex.Scaffold.Tests.Integration -> /Users/lucianosilva/src/open-source/net-hexagonal/tests/Hex.Scaffold.Tests.Integration/bin/Debug/net10.0/Hex.Scaffold.Tests.Integration.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.23

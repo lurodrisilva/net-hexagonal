@@ -1,0 +1,8 @@
+{
+  "Hex.Scaffold.Adapters.Inbound, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Adapters.Inbound",
+  "Hex.Scaffold.Adapters.Outbound, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Adapters.Outbound",
+  "Hex.Scaffold.Adapters.Persistence, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Adapters.Persistence",
+  "Hex.Scaffold.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Api",
+  "Hex.Scaffold.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Application",
+  "Hex.Scaffold.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "\/Users\/lucianosilva\/src\/open-source\/net-hexagonal\/src\/Hex.Scaffold.Domain"
+}

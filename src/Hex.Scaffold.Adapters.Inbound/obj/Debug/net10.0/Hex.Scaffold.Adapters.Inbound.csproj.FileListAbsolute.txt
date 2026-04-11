@@ -1,0 +1,17 @@
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.deps.json
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Application.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Domain.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Application.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/bin/Debug/net10.0/Hex.Scaffold.Domain.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.csproj.AssemblyReference.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.GeneratedMSBuildEditorConfig.editorconfig
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.AssemblyInfoInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.AssemblyInfo.cs
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.csproj.CoreCompileInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaf.1D1B6D28.Up2Date
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/refint/Hex.Scaffold.Adapters.Inbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Inbound.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Inbound/obj/Debug/net10.0/ref/Hex.Scaffold.Adapters.Inbound.dll

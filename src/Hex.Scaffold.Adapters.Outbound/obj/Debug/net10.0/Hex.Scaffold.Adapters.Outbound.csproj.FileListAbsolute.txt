@@ -1,0 +1,15 @@
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.deps.json
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Domain.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/bin/Debug/net10.0/Hex.Scaffold.Domain.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.csproj.AssemblyReference.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.GeneratedMSBuildEditorConfig.editorconfig
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.AssemblyInfoInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.AssemblyInfo.cs
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.csproj.CoreCompileInputs.cache
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaf.119CC488.Up2Date
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/refint/Hex.Scaffold.Adapters.Outbound.dll
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/Hex.Scaffold.Adapters.Outbound.pdb
+/Users/lucianosilva/src/open-source/net-hexagonal/src/Hex.Scaffold.Adapters.Outbound/obj/Debug/net10.0/ref/Hex.Scaffold.Adapters.Outbound.dll

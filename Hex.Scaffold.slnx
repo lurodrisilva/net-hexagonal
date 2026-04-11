@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hex.Scaffold.Adapters.Inbound/Hex.Scaffold.Adapters.Inbound.csproj" />
+    <Project Path="src/Hex.Scaffold.Adapters.Outbound/Hex.Scaffold.Adapters.Outbound.csproj" />
+    <Project Path="src/Hex.Scaffold.Adapters.Persistence/Hex.Scaffold.Adapters.Persistence.csproj" />
+    <Project Path="src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj" />
+    <Project Path="src/Hex.Scaffold.Application/Hex.Scaffold.Application.csproj" />
+    <Project Path="src/Hex.Scaffold.Domain/Hex.Scaffold.Domain.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hex.Scaffold.Tests.Architecture/Hex.Scaffold.Tests.Architecture.csproj" />
+    <Project Path="tests/Hex.Scaffold.Tests.Integration/Hex.Scaffold.Tests.Integration.csproj" />
+    <Project Path="tests/Hex.Scaffold.Tests.Unit/Hex.Scaffold.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
