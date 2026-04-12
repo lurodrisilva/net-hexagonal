@@ -105,8 +105,8 @@ $RECYCLE.BIN/
 # ──────────────────────────────────────────────
 
 # Compiled executables & libraries
-*.exe
-*.dll
+.exe
+.dll
 *.so
 *.dylib
 *.a
@@ -118,7 +118,7 @@ $RECYCLE.BIN/
 *.out
 *.app
 *.com
-*.pdb
+.pdb
 *.ilk
 *.exp
 *.class
@@ -275,3 +275,6 @@ $RECYCLE.BIN/
 
 *.cache
 *.txt
+
+.claude/
+.omc/
