@@ -272,3 +272,6 @@ $RECYCLE.BIN/
 # Flash / legacy
 *.swf
 *.fla
+
+*.cache
+*.txt
