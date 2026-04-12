@@ -1,4 +1,3 @@
-using Ardalis.Result;
 using Microsoft.AspNetCore.Http;
 
 namespace Hex.Scaffold.Adapters.Inbound.Api.Extensions;

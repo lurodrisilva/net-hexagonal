@@ -1,4 +1,3 @@
-global using Ardalis.Result;
-global using Ardalis.SharedKernel;
+global using Hex.Scaffold.Domain.Common;
 global using Mediator;
 global using Microsoft.Extensions.Logging;

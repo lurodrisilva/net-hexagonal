@@ -1,4 +1,4 @@
-using Ardalis.SharedKernel;
+using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
 using Hex.Scaffold.Domain.SampleAggregate;
 using Hex.Scaffold.Domain.SampleAggregate.Specifications;

@@ -1,4 +1,4 @@
-global using Ardalis.Result;
+global using Hex.Scaffold.Domain.Common;
 global using FastEndpoints;
 global using FluentValidation;
 global using Mediator;

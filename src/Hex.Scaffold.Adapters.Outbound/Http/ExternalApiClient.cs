@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using Ardalis.Result;
+using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Domain.Ports.Outbound;
 
 namespace Hex.Scaffold.Adapters.Outbound.Http;

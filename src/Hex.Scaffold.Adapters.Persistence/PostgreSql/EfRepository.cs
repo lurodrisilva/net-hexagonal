@@ -1,3 +1,5 @@
+using Hex.Scaffold.Adapters.Persistence.Common;
+
 namespace Hex.Scaffold.Adapters.Persistence.PostgreSql;
 
 public class EfRepository<T>(AppDbContext dbContext)

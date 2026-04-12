@@ -4,8 +4,6 @@
     <ProjectReference Include="..\Hex.Scaffold.Application\Hex.Scaffold.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Ardalis.SharedKernel" />
-    <PackageReference Include="Ardalis.Specification.EntityFrameworkCore" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>

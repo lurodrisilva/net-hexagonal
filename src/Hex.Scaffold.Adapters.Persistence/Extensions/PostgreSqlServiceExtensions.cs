@@ -1,6 +1,8 @@
+using Hex.Scaffold.Adapters.Persistence.Common;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql.Queries;
 using Hex.Scaffold.Application.Samples.List;
+using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Domain.Interfaces;
 using Hex.Scaffold.Domain.Services;
 
