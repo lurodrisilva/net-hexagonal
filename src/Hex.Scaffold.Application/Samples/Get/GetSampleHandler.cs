@@ -27,7 +27,7 @@ public sealed class GetSampleHandler(
 
     var spec = new SampleByIdSpec(request.SampleId);
     var sample = await _repository.FirstOrDefaultAsync(spec, cancellationToken);
-    if (sample is null) return Result.NotFound();
+    if (sample is null) return Result<SampleDto>.NotFound();
 
     var dto = new SampleDto(sample.Id, sample.Name, sample.Status, sample.Description);
     await _cache.SetAsync(cacheKey, dto, CacheTtl, cancellationToken);

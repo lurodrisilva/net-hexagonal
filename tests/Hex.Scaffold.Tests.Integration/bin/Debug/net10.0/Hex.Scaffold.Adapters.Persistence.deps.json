@@ -8,8 +8,6 @@
     ".NETCoreApp,Version=v10.0": {
       "Hex.Scaffold.Adapters.Persistence/1.0.0": {
         "dependencies": {
-          "Ardalis.SharedKernel": "5.0.0",
-          "Ardalis.Specification.EntityFrameworkCore": "9.3.1",
           "Dapper": "2.1.66",
           "Hex.Scaffold.Application": "1.0.0",
           "Hex.Scaffold.Domain": "1.0.0",
@@ -24,65 +22,6 @@
         },
         "runtime": {
           "Hex.Scaffold.Adapters.Persistence.dll": {}
-        }
-      },
-      "Ardalis.GuardClauses/5.0.0": {
-        "runtime": {
-          "lib/net8.0/Ardalis.GuardClauses.dll": {
-            "assemblyVersion": "5.0.0.0",
-            "fileVersion": "5.0.0.0"
-          }
-        }
-      },
-      "Ardalis.Result/10.1.0": {
-        "runtime": {
-          "lib/net8.0/Ardalis.Result.dll": {
-            "assemblyVersion": "10.1.0.0",
-            "fileVersion": "10.1.0.0"
-          }
-        }
-      },
-      "Ardalis.SharedKernel/5.0.0": {
-        "dependencies": {
-          "Ardalis.GuardClauses": "5.0.0",
-          "Ardalis.Specification": "9.3.1",
-          "Mediator.Abstractions": "3.0.2",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
-        },
-        "runtime": {
-          "lib/net10.0/Ardalis.SharedKernel.dll": {
-            "assemblyVersion": "5.0.0.0",
-            "fileVersion": "5.0.0.0"
-          }
-        }
-      },
-      "Ardalis.SmartEnum/8.2.0": {
-        "runtime": {
-          "lib/net8.0/Ardalis.SmartEnum.dll": {
-            "assemblyVersion": "8.2.0.0",
-            "fileVersion": "8.2.0.0"
-          }
-        }
-      },
-      "Ardalis.Specification/9.3.1": {
-        "runtime": {
-          "lib/net9.0/Ardalis.Specification.dll": {
-            "assemblyVersion": "9.3.1.0",
-            "fileVersion": "9.3.1.0"
-          }
-        }
-      },
-      "Ardalis.Specification.EntityFrameworkCore/9.3.1": {
-        "dependencies": {
-          "Ardalis.Specification": "9.3.1",
-          "Microsoft.EntityFrameworkCore": "10.0.0",
-          "Microsoft.EntityFrameworkCore.Relational": "10.0.0"
-        },
-        "runtime": {
-          "lib/net9.0/Ardalis.Specification.EntityFrameworkCore.dll": {
-            "assemblyVersion": "9.3.1.0",
-            "fileVersion": "9.3.1.0"
-          }
         }
       },
       "Dapper/2.1.66": {
@@ -1005,8 +944,6 @@
       },
       "Hex.Scaffold.Application/1.0.0": {
         "dependencies": {
-          "Ardalis.Result": "10.1.0",
-          "Ardalis.SharedKernel": "5.0.0",
           "Dapper": "2.1.66",
           "Hex.Scaffold.Domain": "1.0.0",
           "Mediator.Abstractions": "3.0.2",
@@ -1021,11 +958,6 @@
       },
       "Hex.Scaffold.Domain/1.0.0": {
         "dependencies": {
-          "Ardalis.GuardClauses": "5.0.0",
-          "Ardalis.Result": "10.1.0",
-          "Ardalis.SharedKernel": "5.0.0",
-          "Ardalis.SmartEnum": "8.2.0",
-          "Ardalis.Specification": "9.3.1",
           "Mediator.Abstractions": "3.0.2",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Vogen": "8.0.2"
@@ -1044,48 +976,6 @@
       "type": "project",
       "serviceable": false,
       "sha512": ""
-    },
-    "Ardalis.GuardClauses/5.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-jVPRvLw0xIUFto2cMrKgRYADWIHbEEfzZHGiU/swwNgl1zo28Q1zfSa3VUC3C0s9DyhFDPSaF4dEDQRyTZUcyQ==",
-      "path": "ardalis.guardclauses/5.0.0",
-      "hashPath": "ardalis.guardclauses.5.0.0.nupkg.sha512"
-    },
-    "Ardalis.Result/10.1.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-+WgsXh+JRm0d8BZPlBUc5w0+FTda4vbWRa/IF2q4zDoRsU5BXr8w4rTbYEklZIMNgQQZTcNouR/QfBV5I/4XYQ==",
-      "path": "ardalis.result/10.1.0",
-      "hashPath": "ardalis.result.10.1.0.nupkg.sha512"
-    },
-    "Ardalis.SharedKernel/5.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-xK3uXmSEHpWnQqQo649SgZFQEcZ8dmWMonpiJPdfj5i23mX5ut0tgKpYheCDKEtYtXdiEKLU17K+eRp2FRGRhQ==",
-      "path": "ardalis.sharedkernel/5.0.0",
-      "hashPath": "ardalis.sharedkernel.5.0.0.nupkg.sha512"
-    },
-    "Ardalis.SmartEnum/8.2.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-P1CLI2okpzHjOJnZMYLnzcyu1/fUJEYK1X4JSnal2TPmovrUTtXK6Sn78D2JgKUdwjSeWddnRveMj+BEZoksvg==",
-      "path": "ardalis.smartenum/8.2.0",
-      "hashPath": "ardalis.smartenum.8.2.0.nupkg.sha512"
-    },
-    "Ardalis.Specification/9.3.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-GWrE6BA0smWFLbN+XPU2l5rDF9Uzelfbb3w35jJ0CGIat+p1ChbtLcbkvYRMEculBHOAo12omwAAOm3VFWkoJQ==",
-      "path": "ardalis.specification/9.3.1",
-      "hashPath": "ardalis.specification.9.3.1.nupkg.sha512"
-    },
-    "Ardalis.Specification.EntityFrameworkCore/9.3.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-QbOo4E6HWdKXZ9QUrqcgiGN4EKtzt0kzGzqr2zc32q5QESzBrceJ3GX1ymWVdCCOzJO1+GPm+/a/5ovSkfrLoQ==",
-      "path": "ardalis.specification.entityframeworkcore/9.3.1",
-      "hashPath": "ardalis.specification.entityframeworkcore.9.3.1.nupkg.sha512"
     },
     "Dapper/2.1.66": {
       "type": "package",

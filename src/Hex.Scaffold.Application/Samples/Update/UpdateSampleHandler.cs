@@ -16,7 +16,7 @@ public sealed class UpdateSampleHandler(
 
     var spec = new SampleByIdSpec(command.Id);
     var sample = await _repository.FirstOrDefaultAsync(spec, cancellationToken);
-    if (sample is null) return Result.NotFound();
+    if (sample is null) return Result<SampleDto>.NotFound();
 
     sample.UpdateName(command.Name)
           .UpdateDescription(command.Description);
