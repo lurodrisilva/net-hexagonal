@@ -1,0 +1,274 @@
+## .NET / C#
+
+# Build outputs
+bin/
+obj/
+out/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# User-specific files
+*.user
+*.suo
+*.userprefs
+*.userosscache
+*.sln.docstates
+
+# Visual Studio
+.vs/
+*.aps
+*.ncb
+*.sap
+*.vbw
+*.vbp
+*.dsw
+*.dsm
+*.vcxproj.filters
+*.vcproj.*.*.user
+*.pidb
+*.svclog
+*.scc
+
+# Rider
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Test results
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# Publish
+publish/
+PublishOutput/
+
+# App settings overrides (keep templates, ignore local overrides)
+appsettings.Development.json
+appsettings.Local.json
+
+# dotnet tools
+.dotnet/
+.tool-manifest
+
+# Entity Framework migrations (generated artifacts)
+# Uncomment if you don't want to track migrations:
+# Migrations/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ──────────────────────────────────────────────
+# Binary files
+# ──────────────────────────────────────────────
+
+# Compiled executables & libraries
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.ko
+*.elf
+*.out
+*.app
+*.com
+*.pdb
+*.ilk
+*.exp
+*.class
+*.pyc
+*.pyo
+
+# .NET / Mono specific binaries
+*.mdb
+
+# Archives & compressed files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+*.gz
+*.bz2
+*.xz
+*.zst
+*.lz
+*.lzma
+*.lzo
+*.rar
+*.7z
+*.cab
+*.iso
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.msi
+*.msix
+*.appx
+*.jar
+*.war
+*.ear
+
+# Disk images & virtual disks
+*.img
+*.vhd
+*.vhdx
+*.vmdk
+*.qcow2
+*.vdi
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.ico
+*.icns
+*.webp
+*.avif
+*.heic
+*.heif
+*.psd
+*.ai
+*.eps
+*.raw
+*.cr2
+*.nef
+*.orf
+*.sr2
+*.svg
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.wma
+*.m4a
+*.opus
+*.aiff
+*.mid
+*.midi
+
+# Video
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.mpg
+*.mpeg
+*.3gp
+*.ogv
+
+# Fonts
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.eot
+
+# Documents (binary formats)
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.odt
+*.ods
+*.odp
+*.rtf
+
+# Databases & data files
+*.db
+*.sqlite
+*.sqlite3
+*.mdf
+*.ldf
+*.ndf
+*.bak
+*.dbf
+
+# Serialized / binary data
+*.bin
+*.dat
+*.data
+*.dump
+*.pickle
+*.pkl
+*.parquet
+*.avro
+*.protobuf
+
+# Cryptographic / certificate files
+*.p12
+*.pfx
+*.cer
+*.der
+*.jks
+*.keystore
+
+# WebAssembly
+*.wasm
+
+# Flash / legacy
+*.swf
+*.fla
