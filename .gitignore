@@ -106,7 +106,9 @@ $RECYCLE.BIN/
 
 # Compiled executables & libraries
 .exe
+*.exe
 .dll
+*.dll
 *.so
 *.dylib
 *.a
