@@ -44,7 +44,7 @@ Integration tests require Docker (Testcontainers spin up PostgreSQL and Redis au
 
 ### Deploying to Kubernetes
 
-A production-shaped Helm chart lives at [`deploy/helm/hex-scaffold`](deploy/helm/hex-scaffold). A single ConfigMap is the source of truth for which adapters are wired at runtime — see [`docs/deployment.md`](docs/deployment.md).
+A production-shaped Helm chart lives at [`deploy/helm/hex-scaffold`](deploy/helm/hex-scaffold) — see its [chart README](deploy/helm/hex-scaffold/README.md) for the complete parameter reference (every `values.yaml` knob, type, default, allowed values), and [`docs/deployment.md`](docs/deployment.md) for install-flow guidance. A single ConfigMap is the source of truth for which adapters are wired at runtime.
 
 ```bash
 helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
