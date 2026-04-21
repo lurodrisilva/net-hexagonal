@@ -4,13 +4,16 @@ The scaffold wires OpenTelemetry, Serilog, health checks, and rate limiting at t
 
 ## OpenTelemetry
 
-[`Api/Configurations/ObservabilityConfig.cs`](../src/Hex.Scaffold.Api/Configurations/ObservabilityConfig.cs) builds a unified trace/metric/log export via **OTLP HTTP** to the endpoint from configuration key `OpenTelemetry:OtlpEndpoint` (default `http://localhost:4318`).
+[`Api/Configurations/ObservabilityConfig.cs`](../src/Hex.Scaffold.Api/Configurations/ObservabilityConfig.cs) builds a unified trace/metric/log export. Two exporters attach to **one** TracerProvider / MeterProvider / LoggerProvider:
 
-| Signal | Instrumentation | Exporter |
-|---|---|---|
-| Traces | `AspNetCore`, `HttpClient` | OTLP HTTP (protobuf) |
-| Metrics | `AspNetCore`, `HttpClient`, Runtime | OTLP HTTP, 10s interval |
-| Logs | Microsoft.Extensions.Logging | OTLP HTTP |
+1. **OTLP HTTP** → `OpenTelemetry:OtlpEndpoint` (default `http://localhost:4318`). Always on.
+2. **Azure Monitor** → `APPLICATIONINSIGHTS_CONNECTION_STRING` env var (or `ApplicationInsights:ConnectionString` config key). **Activates only when set** — empty string = OTLP-only.
+
+| Signal | Instrumentation | OTLP | Azure Monitor |
+|--------|-----------------|:----:|:-------------:|
+| Traces | `AspNetCore`, `HttpClient` | ✓ | ✓ |
+| Metrics | `AspNetCore`, `HttpClient`, Runtime | ✓ (10s) | ✓ |
+| Logs | `Microsoft.Extensions.Logging` | ✓ | ✓ |
 
 Resource attributes:
 
@@ -18,6 +21,19 @@ Resource attributes:
 - `deployment.environment = <ASPNETCORE_ENVIRONMENT>`
 
 Traces from `/healthz` and `/ready` are filtered out to avoid noise.
+
+### Four golden signals in Azure Monitor
+
+No extra instrumentation is needed — the signals fall out of the built-in ASP.NET Core + HTTP + Runtime instrumentations:
+
+| Signal | Where | KQL hint |
+|--------|-------|----------|
+| **Latency** | `requests` → `duration` | `requests \| summarize p95=percentile(duration, 95) by name` |
+| **Traffic** | `requests` → rate | `requests \| summarize rps = count()/60.0 by bin(timestamp, 1m)` |
+| **Errors** | `requests.success=false`, `exceptions` | `requests \| summarize fail = countif(success==false)*1.0/count()` |
+| **Saturation** | `customMetrics` (runtime instr.) | `customMetrics \| where name startswith "process.runtime.dotnet." \| summarize avg(value) by name` |
+
+See [`docs/loadtest.md`](loadtest.md#4-validating-results-in-application-insights) for the canonical KQL deck used when interpreting a load-test run.
 
 ## Serilog
 

@@ -42,6 +42,24 @@ dotnet test --filter "Category=Architecture"
 
 Integration tests require Docker (Testcontainers spin up PostgreSQL and Redis automatically).
 
+### Deploying to Kubernetes
+
+A production-shaped Helm chart lives at [`deploy/helm/hex-scaffold`](deploy/helm/hex-scaffold). A single ConfigMap is the source of truth for which adapters are wired at runtime — see [`docs/deployment.md`](docs/deployment.md).
+
+```bash
+helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
+  --set features.inbound=rest --set features.outbound=kafka \
+  --set features.persistence=postgres --set features.redis=true \
+  --set secrets.appInsightsConnectionString="$APP_INSIGHTS_CS"
+```
+
+### Load testing
+
+- **REST**: k6 script + k6-Operator `TestRun` at [`tests/loadtest/k6/`](tests/loadtest/k6/)
+- **Kafka**: kafka-cli driver + committed event deck at [`tests/loadtest/kafka/`](tests/loadtest/kafka/)
+
+Both flows are documented end-to-end, including the Azure Monitor KQL for the four golden signals, in [`docs/loadtest.md`](docs/loadtest.md).
+
 Once the API is running:
 
 - Scalar UI: `http://localhost:8080/scalar/v1`
@@ -112,7 +130,10 @@ See [`docs/architecture.md`](docs/architecture.md) for the full breakdown.
 | [`docs/adapters.md`](docs/adapters.md) | Inbound (HTTP, Kafka consumer) and outbound (EF, Dapper, Mongo, Redis, Kafka, HTTP) adapters |
 | [`docs/api.md`](docs/api.md) | HTTP endpoints, request/response schemas, error mapping |
 | [`docs/events.md`](docs/events.md) | Domain event dispatch, Kafka publish, read-model projection flow |
-| [`docs/observability.md`](docs/observability.md) | OpenTelemetry, Serilog, health checks, rate limiting |
+| [`docs/observability.md`](docs/observability.md) | OpenTelemetry, Azure Application Insights, four golden signals, Serilog, health, rate limit |
+| [`docs/deployment.md`](docs/deployment.md) | Helm chart & the ConfigMap-driven adapter selector |
+| [`docs/database.md`](docs/database.md) | PostgreSQL schema, EF Core migration strategy (Helm pre-install hook + bundle) |
+| [`docs/loadtest.md`](docs/loadtest.md) | End-to-end load testing — k6 for REST, Strimzi + kafka-cli for Kafka |
 | [`docs/testing.md`](docs/testing.md) | Unit, integration, architecture test strategy |
 | [`docs/development.md`](docs/development.md) | Local infra (Docker), configuration, EF migrations, troubleshooting |
 

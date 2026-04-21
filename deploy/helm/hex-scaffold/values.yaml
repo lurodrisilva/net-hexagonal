@@ -1,0 +1,149 @@
+# ---------------------------------------------------------------------------
+# hex-scaffold / values.yaml
+#
+# The chart is opinionated: pick ONE inbound, ONE outbound, ONE primary
+# persistence store. Redis is optional and only valid with PostgreSQL.
+# The "features" block below is the single source of truth and is rendered
+# verbatim into the ConfigMap consumed by the application.
+# ---------------------------------------------------------------------------
+
+image:
+  repository: ghcr.io/lurodrisilva/net-hexagonal
+  tag: ""                       # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 2
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Adapter / persistence selection (drives ConfigMap + conditional templates).
+#    Allowed:
+#      inbound:     rest | kafka
+#      outbound:    rest | kafka
+#      persistence: postgres | mongo
+#      redis:       true | false   (only legal when persistence=postgres)
+features:
+  inbound: rest
+  outbound: kafka
+  persistence: postgres
+  redis: true
+
+# -- Container-level env overrides (merged after ConfigMap/Secret refs).
+env: []
+
+# -- Connection strings / secrets referenced by the app. Prefer external
+#    secret management (CSI driver, ExternalSecrets, Sealed Secrets) in prod;
+#    the values here feed a Secret template suitable for local / demo use.
+secrets:
+  # Postgres connection string (used when features.persistence=postgres)
+  postgresConnectionString: "Host=postgres;Database=hex-scaffold;Username=postgres;Password=postgres;Port=5432"
+  # Mongo connection string  (used when features.persistence=mongo)
+  mongoConnectionString: "mongodb://mongo:27017"
+  # Redis connection string  (used when features.redis=true)
+  redisConnectionString: "redis:6379"
+  # Kafka bootstrap           (used when any features.*=kafka)
+  kafkaBootstrapServers: "kafka-bootstrap.kafka.svc:9092"
+  kafkaConsumerGroupId: "hex-scaffold-group"
+  # External REST API the outbound HTTP adapter targets (always registered)
+  externalApiBaseUrl: "https://httpbin.org"
+  # Azure Application Insights connection string. Leave empty to disable the
+  # Azure Monitor exporter (the OTLP pipeline still runs). Inject via a real
+  # SecretProviderClass / ExternalSecret in production.
+  appInsightsConnectionString: ""
+
+application:
+  port: 8080
+  # The `MongoDB__DatabaseName` env var; ignored when persistence=postgres.
+  mongoDatabaseName: "hex-scaffold"
+  # ASPNETCORE_ENVIRONMENT
+  environment: Production
+
+# -- Database migrations (PostgreSQL only). When enabled, a Helm pre-install /
+#    pre-upgrade Job runs `dotnet ef database update` before the Deployment
+#    rolls. No-op when persistence=mongo.
+migrations:
+  enabled: true
+  image:
+    # Uses the same image as the app — migrations run via `dotnet ef` which
+    # ships in the SDK. For truly minimal prod images, publish a dedicated
+    # migration bundle (dotnet ef migrations bundle) and reference that.
+    repository: ghcr.io/lurodrisilva/net-hexagonal
+    tag: ""                     # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: hex-scaffold.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1654              # matches the chiseled .NET image's APP_UID
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsUser: 1654
+  capabilities:
+    drop: [ALL]
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- OpenTelemetry / Azure Monitor.
+#    The application already carries the Azure Monitor OTel exporter; setting
+#    appInsightsConnectionString above (via Secret) activates ingest. These
+#    knobs tune the OTLP side (e.g. when running a local collector).
+observability:
+  otlp:
+    endpoint: "http://otel-collector.observability.svc:4318"
+  # Tornadoes the four golden signals (latency/traffic/errors/saturation)
+  # into the Application Insights "customMetrics" table via the runtime and
+  # HTTP/ASP.NET Core instrumentations that are wired in code.

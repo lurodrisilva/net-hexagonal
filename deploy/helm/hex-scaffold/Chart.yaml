@@ -1,0 +1,22 @@
+apiVersion: v2
+name: hex-scaffold
+description: |
+  Hexagonal (ports & adapters) .NET 10 microservice scaffold. A single chart
+  instance deploys one selection of inbound/outbound adapters and persistence
+  (PostgreSQL or MongoDB, optionally paired with Redis) driven entirely by
+  the ConfigMap rendered from values.yaml.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0"
+keywords:
+  - dotnet
+  - hexagonal
+  - kafka
+  - postgres
+  - mongodb
+  - observability
+  - opentelemetry
+  - application-insights
+maintainers:
+  - name: Hex Scaffold Maintainers

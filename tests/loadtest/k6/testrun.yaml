@@ -1,0 +1,40 @@
+# k6-operator TestRun manifest.
+# Prereq: k6-operator installed in-cluster
+#   (https://github.com/grafana/k6-operator).
+#
+# Mount the load script from a ConfigMap so the operator's runner pods pick
+# it up without needing a custom image.
+#
+# Usage:
+#   kubectl create configmap hex-scaffold-loadtest \
+#     --from-file=rest-api-loadtest.js=tests/loadtest/k6/rest-api-loadtest.js
+#   kubectl apply -f tests/loadtest/k6/testrun.yaml
+#   kubectl get testruns -w
+#   kubectl logs -l k6_cr=hex-scaffold-rest-loadtest -f
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: hex-scaffold-rest-loadtest
+spec:
+  # Distribute the scenario across 4 k6 runners.
+  parallelism: 4
+  script:
+    configMap:
+      name: hex-scaffold-loadtest
+      file: rest-api-loadtest.js
+  runner:
+    env:
+      - name: BASE_URL
+        value: "http://hex-scaffold.default.svc:80"
+    resources:
+      requests: { cpu: 200m,  memory: 256Mi }
+      limits:   { cpu: "1",    memory: 512Mi }
+  arguments: >-
+    --summary-export=/tmp/summary.json
+    --tag testid=hex-scaffold-rest-loadtest
+  # Uncomment to ship metrics directly to a Prometheus remote_write target
+  # such as Azure Monitor managed Prometheus.
+  # arguments: >-
+  #   --out experimental-prometheus-rw
+  #   --tag testid=hex-scaffold-rest-loadtest

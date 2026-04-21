@@ -1,0 +1,65 @@
+{{- if and .Values.migrations.enabled (eq .Values.features.persistence "postgres") -}}
+# EF Core schema migration — runs as a Helm pre-install / pre-upgrade hook so
+# the Deployment only starts once `dotnet ef database update` completes.
+# Idempotent: EF's __EFMigrationsHistory table records applied migrations.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "hex-scaffold.fullname" . }}-migrate
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "hex-scaffold.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1654
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "hex-scaffold.migrationImage" . }}
+          imagePullPolicy: {{ .Values.migrations.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1654
+            capabilities: { drop: [ALL] }
+          # The chiseled runtime image has no `dotnet` CLI. The migration
+          # container is expected to be built from the SDK variant or to bundle
+          # a `dotnet-ef migrations bundle` self-extracting executable. The
+          # script below handles both conventions.
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -euo pipefail
+              if command -v dotnet >/dev/null 2>&1; then
+                echo ">> Running 'dotnet ef database update'"
+                dotnet ef database update \
+                  --project /app/Hex.Scaffold.Adapters.Persistence.dll \
+                  --startup-project /app/Hex.Scaffold.Api.dll
+              elif [ -x /app/efbundle ]; then
+                echo ">> Running EF migration bundle"
+                /app/efbundle --connection "$ConnectionStrings__PostgreSql"
+              else
+                echo "!! No migration tool available (no dotnet + no /app/efbundle)." >&2
+                exit 1
+              fi
+          envFrom:
+            - configMapRef:
+                name: {{ include "hex-scaffold.fullname" . }}
+            - secretRef:
+                name: {{ include "hex-scaffold.fullname" . }}
+{{- end }}

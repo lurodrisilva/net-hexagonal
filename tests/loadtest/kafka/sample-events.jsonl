@@ -1,0 +1,25 @@
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1001},"Name":"orders-q2-kickoff","Status":{"Name":"Active"},"Description":"Kafka-ingested sample 1001, scenario: steady create"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1002},"Name":"orders-q2-ramp","Status":{"Name":"Active"},"Description":"Kafka-ingested sample 1002, scenario: ramp create"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1003},"Name":"orders-q2-peak-a","Status":{"Name":"Active"},"Description":"Kafka-ingested sample 1003, scenario: peak create"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1004},"Name":"orders-q2-peak-b","Status":{"Name":"Active"},"Description":"Kafka-ingested sample 1004, scenario: peak create"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1005},"Name":"orders-q2-peak-c","Status":{"Name":"Active"},"Description":"Kafka-ingested sample 1005, scenario: peak create"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1006},"Name":"orders-q2-peak-d","Status":{"Name":"Active"},"Description":null}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1007},"Name":"orders-q2-inactive","Status":{"Name":"Inactive"},"Description":"Status toggle rehearsal"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":1008},"Name":"orders-q2-notset","Status":{"Name":"NotSet"},"Description":"Covers the NotSet SmartEnum branch"}}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":1001},"Name":"orders-q2-kickoff-v2","Status":{"Name":"Active"},"Description":"Update path 1: name+description"}}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":1002},"Name":"orders-q2-ramp","Status":{"Name":"Inactive"},"Description":"Update path 2: status transition"}}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":1003},"Name":"orders-q2-peak-a","Status":{"Name":"Active"},"Description":null}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":1004},"Name":"orders-q2-peak-b-renamed","Status":{"Name":"Active"},"Description":"Rename rehearsal with long description: Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":1005}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":1006}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":1007}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":2001},"Name":"catalog-import-batch-1","Status":{"Name":"Active"},"Description":"Batch import scenario"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":2002},"Name":"catalog-import-batch-2","Status":{"Name":"Active"},"Description":"Batch import scenario"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":2003},"Name":"catalog-import-batch-3","Status":{"Name":"Active"},"Description":"Batch import scenario"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":2004},"Name":"catalog-import-batch-4","Status":{"Name":"Active"},"Description":"Batch import scenario"}}
+{"__key":"SampleCreatedEvent","Sample":{"Id":{"Value":2005},"Name":"catalog-import-batch-5","Status":{"Name":"Active"},"Description":"Batch import scenario"}}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":2001},"Name":"catalog-item-2001-published","Status":{"Name":"Active"},"Description":"Published after validation"}}
+{"__key":"SampleUpdatedEvent","Sample":{"Id":{"Value":2002},"Name":"catalog-item-2002-published","Status":{"Name":"Active"},"Description":"Published after validation"}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":2003}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":2004}}
+{"__key":"SampleDeletedEvent","SampleId":{"Value":2005}}
