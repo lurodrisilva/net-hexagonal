@@ -30,6 +30,7 @@ PORT               ?= 8080
 
 IMAGE              ?= hex-scaffold
 TAG                ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo latest)
+PLATFORMS          ?= linux/amd64,linux/arm64
 
 COVERAGE_DIR       ?= coverage
 PUBLISH_DIR        ?= publish
@@ -177,20 +178,33 @@ db/reset: tools confirm ## Drop and re-apply all migrations (DEV ONLY — destru
 
 # ==================================================================================== #
 # DOCKER
+#
+# The Dockerfile uses BuildKit features (# syntax=, --mount=type=cache,
+# $BUILDPLATFORM / $TARGETARCH cross-compile) that require `docker buildx`.
+# Plain `docker build` may silently drop those features.
 # ==================================================================================== #
 
+.PHONY: docker/check
+docker/check: ## Lint the Dockerfile (BuildKit `--call=check`, no build)
+	$(DOCKER) buildx build --call=check .
+
 .PHONY: docker/build
-docker/build: ## Build container image $(IMAGE):$(TAG) (+ :latest)
-	$(DOCKER) build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+docker/build: ## Build image for the host arch and load into local docker ($(IMAGE):$(TAG))
+	$(DOCKER) buildx build --load -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+
+.PHONY: docker/buildx
+docker/buildx: ## Build multi-arch ($(PLATFORMS)) without pushing — verifies the build only
+	$(DOCKER) buildx build --platform $(PLATFORMS) -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
 
 .PHONY: docker/run
 docker/run: ## Run $(IMAGE):$(TAG) locally on :$(PORT)
 	$(DOCKER) run --rm -it -p $(PORT):8080 $(IMAGE):$(TAG)
 
 .PHONY: docker/push
-docker/push: docker/build confirm ## Push $(IMAGE):$(TAG) to registry
-	$(DOCKER) push $(IMAGE):$(TAG)
-	$(DOCKER) push $(IMAGE):latest
+docker/push: confirm ## Build multi-arch ($(PLATFORMS)) and push $(IMAGE):$(TAG) + :latest
+	$(DOCKER) buildx build --platform $(PLATFORMS) \
+	  -t $(IMAGE):$(TAG) -t $(IMAGE):latest \
+	  --push .
 
 # ==================================================================================== #
 # CLEAN
