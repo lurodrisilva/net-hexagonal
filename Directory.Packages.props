@@ -2,7 +2,7 @@
   <ItemGroup>
     <PackageVersion Include="Mediator.Abstractions" Version="3.0.2" />
     <PackageVersion Include="Mediator.SourceGenerator" Version="3.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
     <PackageVersion Include="Vogen" Version="8.0.2" />
     <PackageVersion Include="Dapper" Version="2.1.66" />
     <PackageVersion Include="FastEndpoints" Version="7.1.1" />
@@ -10,7 +10,7 @@
     <PackageVersion Include="FluentValidation" Version="12.1.0" />
     <PackageVersion Include="Confluent.Kafka" Version="2.8.0" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
     <PackageVersion Include="MongoDB.Driver" Version="3.4.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageVersion Include="StackExchange.Redis" Version="2.8.37" />
@@ -19,13 +19,17 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
     <PackageVersion Include="Scrutor" Version="5.0.1" />
     <PackageVersion Include="Azure.Identity" Version="1.13.2" />
+    <!-- Azure Monitor OpenTelemetry exporter: ships spans/metrics/logs to -->
+    <!-- Application Insights. Added to the existing OTel pipeline; activates -->
+    <!-- only when APPLICATIONINSIGHTS_CONNECTION_STRING is set. -->
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.Exporter" Version="1.7.0" />
     <!-- Transitive pin: Azure.Identity pulls System.Security.Cryptography.Xml 9.0.0, -->
     <!-- which has two HIGH-severity advisories (GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf). -->
     <!-- TreatWarningsAsErrors turns NU1903 into a build failure; 10.0.0 resolves both. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.6" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.13.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.13.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.13.0" />

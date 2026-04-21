@@ -1,3 +1,4 @@
+using Azure.Monitor.OpenTelemetry.Exporter;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -8,11 +9,21 @@ namespace Hex.Scaffold.Api.Configurations;
 
 public static class ObservabilityConfig
 {
+  // Azure Monitor / Application Insights connection string. Env var takes
+  // precedence over appsettings to match Microsoft's recommended production
+  // pattern. Empty = feature disabled (OTLP pipeline still runs).
+  private const string AzureMonitorEnvVar = "APPLICATIONINSIGHTS_CONNECTION_STRING";
+  private const string AzureMonitorConfigKey = "ApplicationInsights:ConnectionString";
+
   public static IHostApplicationBuilder AddObservability(
     this IHostApplicationBuilder builder,
     string serviceName)
   {
     var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4318";
+    var appInsightsConnectionString =
+      Environment.GetEnvironmentVariable(AzureMonitorEnvVar)
+      ?? builder.Configuration[AzureMonitorConfigKey];
+    var azureMonitorEnabled = !string.IsNullOrWhiteSpace(appInsightsConnectionString);
 
     builder.Services.AddOpenTelemetry()
       .ConfigureResource(resource => resource
@@ -21,35 +32,58 @@ public static class ObservabilityConfig
         {
           { "deployment.environment", builder.Environment.EnvironmentName }
         }))
-      .WithTracing(tracing => tracing
-        .AddAspNetCoreInstrumentation(opts =>
-        {
-          opts.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/healthz")
-                             && !ctx.Request.Path.StartsWithSegments("/ready");
-        })
-        .AddHttpClientInstrumentation()
-        .AddOtlpExporter(opts =>
-        {
-          opts.Endpoint = new Uri(otlpEndpoint);
-          opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-        }))
-      .WithMetrics(metrics => metrics
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddRuntimeInstrumentation()
-        .AddOtlpExporter((exporterOptions, readerOptions) =>
-        {
-          exporterOptions.Endpoint = new Uri(otlpEndpoint);
-          exporterOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
-          readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
-        }));
+      .WithTracing(tracing =>
+      {
+        tracing
+          .AddAspNetCoreInstrumentation(opts =>
+          {
+            opts.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/healthz")
+                               && !ctx.Request.Path.StartsWithSegments("/ready");
+          })
+          .AddHttpClientInstrumentation()
+          .AddOtlpExporter(opts =>
+          {
+            opts.Endpoint = new Uri(otlpEndpoint);
+            opts.Protocol = OtlpExportProtocol.HttpProtobuf;
+          });
 
-    builder.Logging.AddOpenTelemetry(logging => logging
-      .AddOtlpExporter(opts =>
+        if (azureMonitorEnabled)
+        {
+          tracing.AddAzureMonitorTraceExporter(o => o.ConnectionString = appInsightsConnectionString);
+        }
+      })
+      .WithMetrics(metrics =>
+      {
+        metrics
+          .AddAspNetCoreInstrumentation()
+          .AddHttpClientInstrumentation()
+          .AddRuntimeInstrumentation()
+          .AddOtlpExporter((exporterOptions, readerOptions) =>
+          {
+            exporterOptions.Endpoint = new Uri(otlpEndpoint);
+            exporterOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
+            readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
+          });
+
+        if (azureMonitorEnabled)
+        {
+          metrics.AddAzureMonitorMetricExporter(o => o.ConnectionString = appInsightsConnectionString);
+        }
+      });
+
+    builder.Logging.AddOpenTelemetry(logging =>
+    {
+      logging.AddOtlpExporter(opts =>
       {
         opts.Endpoint = new Uri(otlpEndpoint);
         opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-      }));
+      });
+
+      if (azureMonitorEnabled)
+      {
+        logging.AddAzureMonitorLogExporter(o => o.ConnectionString = appInsightsConnectionString);
+      }
+    });
 
     return builder;
   }
