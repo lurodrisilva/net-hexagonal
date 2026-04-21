@@ -1,42 +1,63 @@
-# Stage 1: Restore
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
-WORKDIR /app
+# syntax=docker/dockerfile:1.9
 
-COPY global.json .
-COPY Directory.Build.props .
-COPY Directory.Packages.props .
-COPY Hex.Scaffold.slnx .
+# ---------------------------------------------------------------------------
+# Build stage — runs natively on $BUILDPLATFORM, cross-compiles to $TARGETARCH.
+# This keeps multi-arch builds (linux/amd64 + linux/arm64) fast because the
+# .NET SDK itself never runs under QEMU emulation.
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG TARGETARCH
+WORKDIR /src
 
-COPY src/Hex.Scaffold.Domain/Hex.Scaffold.Domain.csproj src/Hex.Scaffold.Domain/
-COPY src/Hex.Scaffold.Application/Hex.Scaffold.Application.csproj src/Hex.Scaffold.Application/
-COPY src/Hex.Scaffold.Adapters.Inbound/Hex.Scaffold.Adapters.Inbound.csproj src/Hex.Scaffold.Adapters.Inbound/
-COPY src/Hex.Scaffold.Adapters.Outbound/Hex.Scaffold.Adapters.Outbound.csproj src/Hex.Scaffold.Adapters.Outbound/
+# 1. Copy only files that affect `dotnet restore` so the restore layer caches
+#    across source-only edits.
+COPY global.json Directory.Build.props Directory.Packages.props Hex.Scaffold.slnx ./
+
+COPY src/Hex.Scaffold.Domain/Hex.Scaffold.Domain.csproj                             src/Hex.Scaffold.Domain/
+COPY src/Hex.Scaffold.Application/Hex.Scaffold.Application.csproj                   src/Hex.Scaffold.Application/
+COPY src/Hex.Scaffold.Adapters.Inbound/Hex.Scaffold.Adapters.Inbound.csproj         src/Hex.Scaffold.Adapters.Inbound/
+COPY src/Hex.Scaffold.Adapters.Outbound/Hex.Scaffold.Adapters.Outbound.csproj       src/Hex.Scaffold.Adapters.Outbound/
 COPY src/Hex.Scaffold.Adapters.Persistence/Hex.Scaffold.Adapters.Persistence.csproj src/Hex.Scaffold.Adapters.Persistence/
-COPY src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj src/Hex.Scaffold.Api/
+COPY src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj                                   src/Hex.Scaffold.Api/
 
-RUN dotnet restore src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj
+# 2. Restore into a BuildKit cache mount — NuGet packages survive across builds
+#    and never land in a layer.
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet restore src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj -a $TARGETARCH
 
-# Stage 2: Build
-FROM restore AS build
+# 3. Copy the rest of the source and publish straight to /out.
+#    `dotnet publish` will build as needed; a separate `build` stage is redundant.
 COPY src/ src/
-RUN dotnet build src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj -c Release --no-restore
 
-# Stage 3: Publish
-FROM build AS publish
-RUN dotnet publish src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj \
-    -c Release \
-    -o /app/publish \
-    --no-build
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj \
+        -c Release \
+        -a $TARGETARCH \
+        --no-restore \
+        --no-self-contained \
+        -o /out
 
-# Stage 4: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+# ---------------------------------------------------------------------------
+# Runtime stage — Microsoft "chiseled" image (distroless-equivalent).
+# No shell, no package manager, pre-set non-root user $APP_UID=1654.
+# The `-extra` variant ships ICU + tzdata for apps that need globalization.
+# ---------------------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS final
 WORKDIR /app
 
-ENV ASPNETCORE_URLS=http://+:8080
-ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_RUNNING_IN_CONTAINER=true
 
 EXPOSE 8080
 
-COPY --from=publish /app/publish .
+COPY --from=build /out .
+
+USER $APP_UID
+
+# Chiseled images have no shell / curl, so HEALTHCHECK is delegated to the
+# orchestrator (Kubernetes livenessProbe / readinessProbe hitting /health).
+# If you need a baked-in HEALTHCHECK, add a self-check endpoint and ship a
+# small statically-linked probe binary in this stage.
 
 ENTRYPOINT ["dotnet", "Hex.Scaffold.Api.dll"]
