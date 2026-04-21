@@ -1,8 +1,10 @@
 # Deployment Guide
 
+> **Chart-local reference**: every `values.yaml` parameter is documented in full at [`deploy/helm/hex-scaffold/README.md`](../deploy/helm/hex-scaffold/README.md) — the canonical place for parameter types, defaults, allowed values, and override guidance. This page covers install flow and cross-cutting concerns only.
+
 ## Helm chart
 
-Location: [`deploy/helm/hex-scaffold`](../deploy/helm/hex-scaffold).
+Location: [`deploy/helm/hex-scaffold`](../deploy/helm/hex-scaffold) · Reference: [`deploy/helm/hex-scaffold/README.md`](../deploy/helm/hex-scaffold/README.md).
 
 ### Install
 
