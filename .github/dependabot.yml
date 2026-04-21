@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Keep GitHub Actions SHA-pins current. Dependabot understands SHA pins and
+  # bumps them with an inline tag comment, so the SHA stays authoritative.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Keep base Docker images current so CVE patches land without manual refresh.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"

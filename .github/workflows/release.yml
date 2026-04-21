@@ -1,0 +1,151 @@
+name: release
+
+# Builds a multi-arch container image and publishes it to GHCR
+# (ghcr.io/<owner>/<repo>) with SLSA build-provenance attestations.
+#
+# Triggers:
+#   pull_request → build + Dockerfile lint, NO push (zero-cost PR validation)
+#   push to main → build + push with `edge` + short SHA tags
+#   tag v*.*.*   → build + push with full semver tags + `latest`
+#
+# Security posture (see .claude/skills/github-actions):
+#   * permissions: {} at workflow floor, widened per job only where needed
+#   * every third-party action SHA-pinned with tag comment
+#   * GHCR auth via short-lived GITHUB_TOKEN (no long-lived PAT)
+#   * build-provenance attestation attached to every pushed image digest
+
+on:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'src/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'Hex.Scaffold.slnx'
+      - 'global.json'
+      - '.github/workflows/release.yml'
+  push:
+    branches: [master, main]
+    tags: ['v*.*.*']
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: build + publish to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read      # checkout
+      packages: write     # push to ghcr.io
+      id-token: write     # mint Sigstore OIDC token for attestation
+      attestations: write # write the attestation to the repo
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      tags:   ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up QEMU (multi-arch emulation for non-native builders)
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags and labels (OCI + semver)
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=pr
+            type=ref,event=branch
+            type=edge,branch=master
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+
+      - name: Lint the Dockerfile (BuildKit --call=check)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          call: check
+
+      - name: Build and push image
+        id: push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          # PRs build only (no push); branch/tag pushes go to GHCR.
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest build provenance (SLSA v1)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Job summary
+        if: always()
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS:   ${{ steps.meta.outputs.tags }}
+          PUSHED: ${{ github.event_name != 'pull_request' }}
+        run: |
+          {
+            echo "## Release build"
+            echo ""
+            echo "- Event: \`${{ github.event_name }}\`  Ref: \`${{ github.ref }}\`"
+            echo "- Pushed to registry: \`$PUSHED\`"
+            echo "- Digest: \`${DIGEST:-<not-pushed>}\`"
+            echo ""
+            echo "### Tags"
+            echo '```'
+            printf '%s\n' "$TAGS"
+            echo '```'
+            if [ "$PUSHED" = "true" ]; then
+              echo ""
+              echo "Verify locally:"
+              echo '```bash'
+              echo "gh attestation verify oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST} -R ${{ github.repository }}"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
