@@ -22,14 +22,14 @@ COPY src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj                               
 
 # 2. Restore into a BuildKit cache mount — NuGet packages survive across builds
 #    and never land in a layer.
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
     dotnet restore src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj -a $TARGETARCH
 
 # 3. Copy the rest of the source and publish straight to /out.
 #    `dotnet publish` will build as needed; a separate `build` stage is redundant.
 COPY src/ src/
 
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
     dotnet publish src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj \
         -c Release \
         -a $TARGETARCH \
