@@ -1,0 +1,59 @@
+# Kafka load-test driver Job.
+# Uses a Strimzi Kafka image that ships `kafka-topics.sh`,
+# `kafka-console-producer.sh`, and `kafka-producer-perf-test.sh`.
+#
+# Prereq: a Kafka cluster managed by the Strimzi operator
+#   (https://github.com/strimzi/strimzi-kafka-operator).
+#
+# Usage:
+#   kubectl -n kafka create configmap hex-scaffold-kafka-loadtest \
+#     --from-file=load-test.sh=tests/loadtest/kafka/load-test.sh \
+#     --from-file=sample-events.jsonl=tests/loadtest/kafka/sample-events.jsonl
+#   kubectl -n kafka apply -f tests/loadtest/kafka/strimzi-producer-job.yaml
+#   kubectl -n kafka logs job/hex-scaffold-kafka-loadtest -f
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hex-scaffold-kafka-loadtest
+  namespace: kafka
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hex-scaffold-kafka-loadtest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: producer
+          image: quay.io/strimzi/kafka:0.45.0-kafka-3.9.0
+          command: ["/bin/bash", "/scripts/load-test.sh"]
+          args: ["synthetic"]              # subcommand: create-topic | seed | synthetic | perf
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: "my-cluster-kafka-bootstrap.kafka.svc:9092"
+            - name: TOPIC
+              value: "sample-events"
+            - name: PARTITIONS
+              value: "12"
+            - name: REPLICATION_FACTOR
+              value: "3"
+            - name: NUM_EVENTS
+              value: "100000"
+            - name: THROUGHPUT
+              value: "2000"
+            - name: SEED_FILE
+              value: "/scripts/sample-events.jsonl"
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits:   { cpu: "2",  memory: 1Gi    }
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: hex-scaffold-kafka-loadtest
+            defaultMode: 0555

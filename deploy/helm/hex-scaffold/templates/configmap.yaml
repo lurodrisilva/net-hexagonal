@@ -1,0 +1,34 @@
+{{- include "hex-scaffold.validateFeatures" . -}}
+# ConfigMap — the single source of truth for the runtime adapter selector
+# and every non-secret knob the application reads. Mounted into the pod as
+# environment variables (Kubernetes double-underscore → .NET config section
+# delimiter).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hex-scaffold.fullname" . }}
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+data:
+  # --- Feature selector -----------------------------------------------------
+  Features__InboundAdapter:  {{ .Values.features.inbound  | quote }}
+  Features__OutboundAdapter: {{ .Values.features.outbound | quote }}
+  Features__Persistence:     {{ .Values.features.persistence | quote }}
+  Features__UseRedis:        {{ .Values.features.redis | quote }}
+
+  # --- App runtime ---------------------------------------------------------
+  ASPNETCORE_ENVIRONMENT:   {{ .Values.application.environment | quote }}
+  ASPNETCORE_URLS:          "http://+:{{ .Values.application.port }}"
+  DOTNET_RUNNING_IN_CONTAINER: "true"
+
+  # --- MongoDB database name (only honored when Persistence=mongo) ----------
+  MongoDB__DatabaseName:    {{ .Values.application.mongoDatabaseName | quote }}
+
+  # --- OpenTelemetry OTLP endpoint (always on) -----------------------------
+  OpenTelemetry__OtlpEndpoint: {{ .Values.observability.otlp.endpoint | quote }}
+
+  # --- External REST API (outbound HTTP adapter) ---------------------------
+  ExternalApi__BaseUrl:     {{ .Values.secrets.externalApiBaseUrl | quote }}
+
+  # --- Kafka consumer group (producer bootstrap is in the Secret) ----------
+  Kafka__ConsumerGroupId:   {{ .Values.secrets.kafkaConsumerGroupId | quote }}

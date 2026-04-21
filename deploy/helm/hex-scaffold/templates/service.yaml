@@ -1,0 +1,21 @@
+{{- if eq .Values.features.inbound "rest" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hex-scaffold.fullname" . }}
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "hex-scaffold.selectorLabels" . | nindent 4 }}
+{{- end }}

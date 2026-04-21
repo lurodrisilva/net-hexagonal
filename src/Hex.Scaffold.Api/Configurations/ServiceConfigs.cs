@@ -17,40 +17,75 @@ public static class ServiceConfigs
     IConfiguration configuration,
     Microsoft.Extensions.Logging.ILogger logger)
   {
-    // Persistence adapters
-    services.AddPostgreSqlServices(configuration, logger);
-    services.AddMongoDbServices(configuration, logger);
-    services.AddRedisServices(configuration, logger);
+    // Feature selector: drives which adapters are wired. Read from the
+    // "Features" configuration section (ConfigMap → environment variables
+    // when deployed via the Helm chart).
+    var features = configuration.GetSection(FeaturesOptions.SectionName).Get<FeaturesOptions>()
+                   ?? new FeaturesOptions();
+    features.Validate();
+    services.AddSingleton(features);
+    logger.LogInformation(
+      "Features: Inbound={Inbound}, Outbound={Outbound}, Persistence={Persistence}, UseRedis={UseRedis}",
+      features.InboundAdapter, features.OutboundAdapter, features.Persistence, features.UseRedis);
 
-    // Kafka
-    services.Configure<KafkaOptions>(configuration.GetSection("Kafka"));
-    services.AddSingleton<IProducer<string, string>>(sp =>
+    // Persistence adapters — primary store is postgres OR mongo; redis is
+    // optional and only valid alongside postgres (enforced in Validate()).
+    if (features.PostgresEnabled)
     {
-      var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
-      var config = new ProducerConfig
-      {
-        BootstrapServers = options.BootstrapServers,
-        Acks = Acks.All,
-        EnableIdempotence = true
-      };
-      return new ProducerBuilder<string, string>(config).Build();
-    });
-    services.AddSingleton<IConsumer<string, string>>(sp =>
+      services.AddPostgreSqlServices(configuration, logger);
+    }
+    if (features.MongoEnabled)
     {
-      var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
-      var config = new ConsumerConfig
-      {
-        BootstrapServers = options.BootstrapServers,
-        GroupId = options.ConsumerGroupId,
-        AutoOffsetReset = AutoOffsetReset.Earliest,
-        EnableAutoCommit = false
-      };
-      return new ConsumerBuilder<string, string>(config).Build();
-    });
-    services.AddScoped<IEventPublisher, KafkaEventPublisher>();
-    services.AddHostedService<SampleEventConsumer>();
+      services.AddMongoDbServices(configuration, logger);
+    }
+    if (features.UseRedis)
+    {
+      services.AddRedisServices(configuration, logger);
+    }
 
-    // HTTP Resilient Client — uses existing ExternalApiOptions from outbound adapter
+    // Kafka — producer is registered when either the inbound consumer OR
+    // the outbound publisher needs it. Consumer + BackgroundService register
+    // only when inbound=kafka.
+    var kafkaProducerNeeded = features.OutboundKafkaEnabled;
+    var kafkaConsumerNeeded = features.InboundKafkaEnabled;
+    if (kafkaProducerNeeded || kafkaConsumerNeeded)
+    {
+      services.Configure<KafkaOptions>(configuration.GetSection("Kafka"));
+    }
+    if (kafkaProducerNeeded)
+    {
+      services.AddSingleton<IProducer<string, string>>(sp =>
+      {
+        var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
+        var config = new ProducerConfig
+        {
+          BootstrapServers = options.BootstrapServers,
+          Acks = Acks.All,
+          EnableIdempotence = true
+        };
+        return new ProducerBuilder<string, string>(config).Build();
+      });
+      services.AddScoped<IEventPublisher, KafkaEventPublisher>();
+    }
+    if (kafkaConsumerNeeded)
+    {
+      services.AddSingleton<IConsumer<string, string>>(sp =>
+      {
+        var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
+        var config = new ConsumerConfig
+        {
+          BootstrapServers = options.BootstrapServers,
+          GroupId = options.ConsumerGroupId,
+          AutoOffsetReset = AutoOffsetReset.Earliest,
+          EnableAutoCommit = false
+        };
+        return new ConsumerBuilder<string, string>(config).Build();
+      });
+      services.AddHostedService<SampleEventConsumer>();
+    }
+
+    // HTTP Resilient Client — always available because outbound REST maps to
+    // this adapter, and inbound REST endpoints may call out to it as well.
     services.Configure<ExternalApiOptions>(configuration.GetSection("ExternalApi"));
     services.AddHttpClient("ExternalApi", (sp, client) =>
     {
@@ -63,8 +98,8 @@ public static class ServiceConfigs
     // Mediator
     services.AddMediatorServices(logger);
 
-    // Scrutor: scan adapter assemblies for any remaining port implementations
-    // (explicit registrations above take precedence — RegistrationStrategy.Skip skips already-registered services)
+    // Scrutor: scan adapter assemblies for any remaining port implementations.
+    // Explicit registrations above take precedence (RegistrationStrategy.Skip).
     services.Scan(scan => scan
       .FromAssembliesOf(
         typeof(Hex.Scaffold.Adapters.Persistence.PostgreSql.AppDbContext),
