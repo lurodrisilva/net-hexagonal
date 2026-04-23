@@ -65,9 +65,10 @@ application:
 migrations:
   enabled: true
   image:
-    # Uses the same image as the app — migrations run via `dotnet ef` which
-    # ships in the SDK. For truly minimal prod images, publish a dedicated
-    # migration bundle (dotnet ef migrations bundle) and reference that.
+    # Uses the same image as the app. The runtime image ships a self-contained
+    # EF migration bundle at /app/efbundle (produced by `dotnet ef migrations
+    # bundle --self-contained` in the Dockerfile build stage), so the chiseled
+    # runtime can run migrations without a shell or the .NET SDK.
     repository: ghcr.io/lurodrisilva/net-hexagonal
     tag: ""                     # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent

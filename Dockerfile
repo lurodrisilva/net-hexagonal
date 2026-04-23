@@ -37,6 +37,26 @@ RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
         --no-self-contained \
         -o /out
 
+# 4. Produce a self-contained EF Core migration bundle. The runtime image is
+#    chiseled (no shell, no SDK), so `dotnet ef database update` cannot run in
+#    the pod. `dotnet ef migrations bundle --self-contained` emits a single
+#    executable that embeds the migrations + a minimal .NET runtime and reads
+#    its connection string from ConnectionStrings__PostgreSql via the startup
+#    project's IConfiguration. Shipped as /app/efbundle in the final image.
+RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
+    case "$TARGETARCH" in \
+      amd64) RID=linux-x64 ;; \
+      arm64) RID=linux-arm64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    dotnet tool install --tool-path /dotnet-tools dotnet-ef --version 10.0.0 && \
+    /dotnet-tools/dotnet-ef migrations bundle \
+        --project src/Hex.Scaffold.Adapters.Persistence/Hex.Scaffold.Adapters.Persistence.csproj \
+        --self-contained \
+        --target-runtime $RID \
+        --output /efbundle/efbundle \
+        --configuration Release
+
 # ---------------------------------------------------------------------------
 # Runtime stage — Microsoft "chiseled" image (distroless-equivalent).
 # No shell, no package manager, pre-set non-root user $APP_UID=1654.
@@ -52,6 +72,9 @@ ENV ASPNETCORE_URLS=http://+:8080 \
 EXPOSE 8080
 
 COPY --from=build /out .
+# Ship the self-contained EF migration bundle alongside the app. Invoked by
+# the Helm pre-install/pre-upgrade Job (see deploy/helm/.../migration-job.yaml).
+COPY --from=build /efbundle/efbundle /app/efbundle
 
 USER $APP_UID
 

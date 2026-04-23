@@ -37,26 +37,12 @@ spec:
             allowPrivilegeEscalation: false
             runAsUser: 1654
             capabilities: { drop: [ALL] }
-          # The chiseled runtime image has no `dotnet` CLI. The migration
-          # container is expected to be built from the SDK variant or to bundle
-          # a `dotnet-ef migrations bundle` self-extracting executable. The
-          # script below handles both conventions.
-          command: ["/bin/sh","-c"]
-          args:
-            - |
-              set -euo pipefail
-              if command -v dotnet >/dev/null 2>&1; then
-                echo ">> Running 'dotnet ef database update'"
-                dotnet ef database update \
-                  --project /app/Hex.Scaffold.Adapters.Persistence.dll \
-                  --startup-project /app/Hex.Scaffold.Api.dll
-              elif [ -x /app/efbundle ]; then
-                echo ">> Running EF migration bundle"
-                /app/efbundle --connection "$ConnectionStrings__PostgreSql"
-              else
-                echo "!! No migration tool available (no dotnet + no /app/efbundle)." >&2
-                exit 1
-              fi
+          # The runtime image is chiseled (no shell, no SDK) — invoke the
+          # self-contained EF migration bundle baked in at build time. It reads
+          # ConnectionStrings__PostgreSql from the Secret via envFrom through
+          # the startup project's IConfiguration (no connection string on the
+          # command line → no `ps` leakage).
+          command: ["/app/efbundle"]
           envFrom:
             - configMapRef:
                 name: {{ include "hex-scaffold.fullname" . }}
