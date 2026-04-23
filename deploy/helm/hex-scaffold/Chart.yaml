@@ -7,7 +7,8 @@ description: |
   the ConfigMap rendered from values.yaml.
 type: application
 version: 0.1.0
-appVersion: "0.1.0"
+#appVersion: "0.1.0"
+appVersion: "latest"
 kubeVersion: ">=1.27.0"
 keywords:
   - dotnet

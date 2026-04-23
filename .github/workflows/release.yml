@@ -5,7 +5,7 @@ name: release
 #
 # Triggers:
 #   pull_request → build + Dockerfile lint, NO push (zero-cost PR validation)
-#   push to main → build + push with `edge` + short SHA tags
+#   push to main → build + push with `edge` + short SHA + `latest` tags
 #   tag v*.*.*   → build + push with full semver tags + `latest`
 #
 # Security posture (see .claude/skills/github-actions):
@@ -79,6 +79,12 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # `latest` is applied on every GHCR push (master/main + semver tags),
+          # never on PRs (which do not push). flavor: latest=false disables the
+          # action's default semver-only auto-latest so the rule above is the
+          # single source of truth.
+          flavor: |
+            latest=false
           tags: |
             type=ref,event=pr
             type=ref,event=branch
@@ -88,6 +94,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,format=short
+            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.source=${{ github.event.repository.html_url }}

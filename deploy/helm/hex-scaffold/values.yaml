@@ -9,7 +9,7 @@
 
 image:
   repository: ghcr.io/lurodrisilva/net-hexagonal
-  tag: ""                       # defaults to .Chart.AppVersion
+  tag: "latest"                       # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -37,7 +37,7 @@ env: []
 #    the values here feed a Secret template suitable for local / demo use.
 secrets:
   # Postgres connection string (used when features.persistence=postgres)
-  postgresConnectionString: "Host=postgres;Database=hex-scaffold;Username=postgres;Password=postgres;Port=5432"
+  postgresConnectionString: "Host=pgsql-pp.private.postgres.database.azure.com;Database=postgres;Username=adminpg;Password=$kFFb23j@%*_*);Port=5432"
   # Mongo connection string  (used when features.persistence=mongo)
   mongoConnectionString: "mongodb://mongo:27017"
   # Redis connection string  (used when features.redis=true)
