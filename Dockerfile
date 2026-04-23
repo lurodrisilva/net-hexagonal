@@ -21,19 +21,29 @@ COPY src/Hex.Scaffold.Adapters.Persistence/Hex.Scaffold.Adapters.Persistence.csp
 COPY src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj                                   src/Hex.Scaffold.Api/
 
 # 2. Restore into a BuildKit cache mount — NuGet packages survive across builds
-#    and never land in a layer.
+#    and never land in a layer. Cache id is arch-scoped so the amd64 and arm64
+#    build stages don't race on writes to the same .nuget/packages tree.
+#    NOTE: `dotnet restore` intentionally does NOT pass `-a $TARGETARCH`. With
+#    that flag, some .NET SDK versions skip architecture-neutral analyzer
+#    packages (e.g. Mediator.SourceGenerator), which then break the publish
+#    step below with NETSDK1064 "Package … was not found". A full restore
+#    fetches everything; publish picks the RID-specific runtime slice.
 RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
-    dotnet restore src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj -a $TARGETARCH
+    dotnet restore src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj
 
 # 3. Copy the rest of the source and publish straight to /out.
 #    `dotnet publish` will build as needed; a separate `build` stage is redundant.
 COPY src/ src/
 
+#    NOTE: `--no-restore` is deliberately omitted. The arch-agnostic restore
+#    above produces a portable project.assets.json without a
+#    `net10.0/linux-$RID` target; publish's own RID-aware restore fills that in
+#    (cheap — packages are already in the cache mount). Adding --no-restore
+#    here fails with NETSDK1047 "doesn't have a target for net10.0/linux-<rid>".
 RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages \
     dotnet publish src/Hex.Scaffold.Api/Hex.Scaffold.Api.csproj \
         -c Release \
         -a $TARGETARCH \
-        --no-restore \
         --no-self-contained \
         -o /out
 

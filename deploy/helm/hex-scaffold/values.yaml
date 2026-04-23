@@ -10,7 +10,10 @@
 image:
   repository: ghcr.io/lurodrisilva/net-hexagonal
   tag: "latest"                       # defaults to .Chart.AppVersion
-  pullPolicy: IfNotPresent
+  # `Always` because `:latest` is a mutable tag — IfNotPresent would let nodes
+  # keep serving a stale cached digest after a new image is pushed. Override to
+  # IfNotPresent when pinning to an immutable semver or sha tag.
+  pullPolicy: Always
 imagePullSecrets: []
 
 replicaCount: 2
@@ -71,7 +74,9 @@ migrations:
     # runtime can run migrations without a shell or the .NET SDK.
     repository: ghcr.io/lurodrisilva/net-hexagonal
     tag: ""                     # defaults to .Chart.AppVersion
-    pullPolicy: IfNotPresent
+    # Same rationale as image.pullPolicy above — the migration Job references
+    # the mutable `:latest` tag by default, so force a re-pull on every run.
+    pullPolicy: Always
   backoffLimit: 3
   activeDeadlineSeconds: 600
 
