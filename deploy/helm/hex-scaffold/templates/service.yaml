@@ -18,4 +18,8 @@ spec:
       name: http
   selector:
     {{- include "hex-scaffold.selectorLabels" . | nindent 4 }}
+    # Excludes wiremock pods (which carry app.kubernetes.io/component=wiremock)
+    # from the application Service's endpoint set. Without this filter, the
+    # Service round-robins /samples traffic across both the app and the mock.
+    app.kubernetes.io/component: api
 {{- end }}
