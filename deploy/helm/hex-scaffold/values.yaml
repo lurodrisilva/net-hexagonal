@@ -74,7 +74,9 @@ wiremock:
   replicaCount: 1
   image:
     repository: wiremock/wiremock
-    tag: "3-alpine"
+    # Pinned to an immutable patched tag because the floating "3-alpine" alias
+    # was returning 404 from Docker Hub in some pull contexts.
+    tag: "3.13.2-3-alpine"
     pullPolicy: IfNotPresent
   service:
     port: 8080
