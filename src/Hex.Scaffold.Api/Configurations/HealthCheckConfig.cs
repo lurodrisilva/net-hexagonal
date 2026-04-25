@@ -1,3 +1,4 @@
+using Hex.Scaffold.Api.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MongoDB.Driver;
 using StackExchange.Redis;
@@ -10,13 +11,22 @@ public static class HealthCheckConfig
     this IServiceCollection services,
     IConfiguration configuration)
   {
-    var pgConnection = configuration.GetConnectionString("PostgreSql") ?? "";
-    var mongoConnection = configuration["MongoDB:ConnectionString"] ?? "";
-    var redisConnection = configuration["Redis:ConnectionString"] ?? "";
+    // Health checks are gated on the same FeaturesOptions selector that drives
+    // DI registration in ServiceConfigs. Probing a backend the app never talks
+    // to (e.g. MongoDB when persistence=postgres) would default to localhost,
+    // hang for the driver's server-selection timeout (~30s for the Mongo
+    // driver), and push the readiness probe past its deadline — making the pod
+    // stay 0/Ready even though the app is fine.
+    var features = configuration.GetSection(FeaturesOptions.SectionName).Get<FeaturesOptions>()
+                   ?? new FeaturesOptions();
 
-    services.AddHealthChecks()
-      .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"])
-      .AddCheck("postgresql", () =>
+    var builder = services.AddHealthChecks()
+      .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+
+    if (features.PostgresEnabled)
+    {
+      var pgConnection = configuration.GetConnectionString("PostgreSql") ?? "";
+      builder.AddCheck("postgresql", () =>
       {
         try
         {
@@ -28,8 +38,13 @@ public static class HealthCheckConfig
         {
           return HealthCheckResult.Unhealthy("PostgreSQL connection failed.", ex);
         }
-      }, tags: ["ready"])
-      .AddCheck("mongodb", () =>
+      }, tags: ["ready"]);
+    }
+
+    if (features.MongoEnabled)
+    {
+      var mongoConnection = configuration["MongoDB:ConnectionString"] ?? "";
+      builder.AddCheck("mongodb", () =>
       {
         try
         {
@@ -41,8 +56,13 @@ public static class HealthCheckConfig
         {
           return HealthCheckResult.Unhealthy("MongoDB ping failed.", ex);
         }
-      }, tags: ["ready"])
-      .AddCheck("redis", () =>
+      }, tags: ["ready"]);
+    }
+
+    if (features.UseRedis)
+    {
+      var redisConnection = configuration["Redis:ConnectionString"] ?? "";
+      builder.AddCheck("redis", () =>
       {
         try
         {
@@ -56,8 +76,12 @@ public static class HealthCheckConfig
         {
           return HealthCheckResult.Unhealthy("Redis ping failed.", ex);
         }
-      }, tags: ["ready"])
-      .AddCheck("kafka", () =>
+      }, tags: ["ready"]);
+    }
+
+    if (features.InboundKafkaEnabled || features.OutboundKafkaEnabled)
+    {
+      builder.AddCheck("kafka", () =>
       {
         try
         {
@@ -76,6 +100,7 @@ public static class HealthCheckConfig
           return HealthCheckResult.Degraded("Kafka unavailable (soft dependency).", ex);
         }
       }, tags: ["ready"]);
+    }
 
     // Note: HTTP external API client health is not checked here.
     // The client itself is always available; resilience policies (retry/circuit breaker)
