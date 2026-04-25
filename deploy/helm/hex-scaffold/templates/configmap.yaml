@@ -36,7 +36,9 @@ data:
   OpenTelemetry__OtlpEndpoint: {{ .Values.observability.otlp.endpoint | quote }}
 
   # --- External REST API (outbound HTTP adapter) ---------------------------
-  ExternalApi__BaseUrl:     {{ .Values.secrets.externalApiBaseUrl | quote }}
+  # Resolved via the hex-scaffold.externalApiBaseUrl helper: in-cluster
+  # WireMock when wiremock.enabled, otherwise secrets.externalApiBaseUrl.
+  ExternalApi__BaseUrl:     {{ include "hex-scaffold.externalApiBaseUrl" . | quote }}
 
   # --- Kafka consumer group (producer bootstrap is in the Secret) ----------
   Kafka__ConsumerGroupId:   {{ .Values.secrets.kafkaConsumerGroupId | quote }}

@@ -16,6 +16,7 @@ A production-shaped chart for the `hex-scaffold` .NET 10 microservice. A single 
   - [Environment variable overrides](#environment-variable-overrides)
   - [Secrets parameters](#secrets-parameters)
   - [Application parameters](#application-parameters)
+  - [WireMock parameters](#wiremock-parameters)
   - [Database migration parameters](#database-migration-parameters)
   - [Service parameters](#service-parameters)
   - [Ingress parameters](#ingress-parameters)
@@ -121,7 +122,12 @@ The Deployment mounts this ConfigMap via `envFrom`. At startup, `FeaturesOptions
 | `Service` | `features.inbound = rest` |
 | `Ingress` | `features.inbound = rest` AND `ingress.enabled = true` |
 | `HorizontalPodAutoscaler` | `autoscaling.enabled = true` |
-| `Job` (migration) | `features.persistence = postgres` AND `migrations.enabled = true` (Helm `pre-install` / `pre-upgrade` hook) |
+| `Job` (migration) | `features.persistence = postgres` AND `migrations.enabled = true` (Helm `pre-install` / `pre-upgrade` hook, weight `-5`) |
+| `Deployment` (wiremock) | `wiremock.enabled = true` |
+| `Service` (wiremock) | `wiremock.enabled = true` |
+| `ConfigMap` (wiremock mappings) | `wiremock.enabled = true` |
+
+The runtime `ConfigMap` and `Secret` carry hook annotations (`pre-install,pre-upgrade`, weight `-10`) so they are applied **before** the migration Job (weight `-5`), which `envFrom`s them. `before-hook-creation` keeps them in the cluster after the hook runs so the regular Deployment can also mount them; `helm uninstall` still removes them (no `resource-policy=keep`).
 
 ---
 
@@ -135,7 +141,7 @@ All defaults below come from [`values.yaml`](./values.yaml). Types follow the He
 |-----|------|---------|-------------|
 | `image.repository` | string | `ghcr.io/lurodrisilva/net-hexagonal` | Container image repository. |
 | `image.tag` | string | `""` | Image tag; falls back to `.Chart.AppVersion` when empty. Override for pinned releases. |
-| `image.pullPolicy` | string | `IfNotPresent` | Kubernetes image pull policy. `Always` is recommended for mutable tags. |
+| `image.pullPolicy` | string | `Always` | Kubernetes image pull policy. Defaults to `Always` because the shipped `image.tag` is `latest` (mutable) — the chart would otherwise serve stale cached digests on AKS nodes after a CI push. Override to `IfNotPresent` when pinning to an immutable semver or sha tag. |
 | `imagePullSecrets` | list(map) | `[]` | List of secret names granting pull access to private registries. |
 
 ### Common parameters
@@ -172,7 +178,7 @@ All rendered into a single `Secret` (stringData). Conditional keys: a key is onl
 | `secrets.redisConnectionString` | string | `redis:6379` | `features.redis=true` | StackExchange.Redis connection string. |
 | `secrets.kafkaBootstrapServers` | string | `kafka-bootstrap.kafka.svc:9092` | any `features.*=kafka` | Comma-separated `host:port` list. |
 | `secrets.kafkaConsumerGroupId` | string | `hex-scaffold-group` | `features.inbound=kafka` | Consumer group id. Usually per-env, never per-replica. Rendered into the ConfigMap, not the Secret. |
-| `secrets.externalApiBaseUrl` | string | `https://httpbin.org` | always | Base URL for the resilient outbound HTTP client. |
+| `secrets.externalApiBaseUrl` | string | `https://httpbin.org` | only when `wiremock.enabled=false` | Base URL for the resilient outbound HTTP client. **Ignored** when `wiremock.enabled=true` — the chart helper `hex-scaffold.externalApiBaseUrl` then rewrites `ExternalApi__BaseUrl` to point at the in-cluster WireMock service so the app hits a deterministic mock with a baked-in delay. See [WireMock parameters](#wiremock-parameters). |
 | `secrets.appInsightsConnectionString` | string | `""` | to activate Azure Monitor | Non-empty value activates the Azure Monitor OTel exporter in code. Empty = OTLP-only. **Prod: populate via CSI / ExternalSecrets.** |
 
 ### Application parameters
@@ -183,14 +189,34 @@ All rendered into a single `Secret` (stringData). Conditional keys: a key is onl
 | `application.mongoDatabaseName` | string | `hex-scaffold` | `MongoDB__DatabaseName`. Ignored when `features.persistence != mongo`. |
 | `application.environment` | string | `Production` | `ASPNETCORE_ENVIRONMENT`. Values: `Development`, `Staging`, `Production`. |
 
-### Database migration parameters
+### WireMock parameters
+
+When `wiremock.enabled=true` (the default), the chart renders an in-cluster WireMock Deployment + Service + ConfigMap and rewrites the application's `ExternalApi__BaseUrl` to target it. The outbound REST adapter (`IExternalApiClient`) then hits a deterministic mock with a baked-in latency instead of an external host. Toggle off when you point at a real upstream (`secrets.externalApiBaseUrl`).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `migrations.enabled` | bool | `true` | Enables the EF Core migration Job (Helm `pre-install`/`pre-upgrade` hook). Ignored when `features.persistence != postgres`. |
-| `migrations.image.repository` | string | `ghcr.io/lurodrisilva/net-hexagonal` | Migration-runner image; defaults to the app image. For minimal prod: build a dedicated image that carries an `dotnet ef migrations bundle` (expected at `/app/efbundle`). |
-| `migrations.image.tag` | string | `""` | Falls back to `.Chart.AppVersion`. Keep this in lockstep with `image.tag`. |
-| `migrations.image.pullPolicy` | string | `IfNotPresent` | — |
+| `wiremock.enabled` | bool | `true` | Render WireMock resources and rewrite `ExternalApi__BaseUrl` to the WireMock service. |
+| `wiremock.replicaCount` | int | `1` | Replica count. WireMock is stateless; horizontal scaling is rarely needed for mock workloads. |
+| `wiremock.image.repository` | string | `wiremock/wiremock` | Container image. |
+| `wiremock.image.tag` | string | `3-alpine` | WireMock 3.x on Alpine — slim and arch-portable. |
+| `wiremock.image.pullPolicy` | string | `IfNotPresent` | Image pull policy (immutable tag). |
+| `wiremock.service.port` | int | `8080` | Service port. The chart helper `hex-scaffold.externalApiBaseUrl` builds the URL `http://<release>-wiremock:<port>` from this. |
+| `wiremock.resources` | map | `50m/128Mi` requests, `500m/256Mi` limits | Standard `resources` block. |
+| `wiremock.fixedDelayMs` | int | `300` | Global response delay (ms) injected into every stub's `response` at render time so the application's HttpClient resilience pipeline observes a realistic latency. Set in one place — do **not** add `fixedDelayMilliseconds` per stub. |
+| `wiremock.mappings` | map of stub objects | catchall `ANY .*` → `200` JSON | Stub mappings rendered as individual JSON files (`/home/wiremock/mappings/<key>.json`) and loaded by WireMock at startup. Each entry follows the standard WireMock JSON shape (`request`, `response`). The chart adds `fixedDelayMilliseconds: <fixedDelayMs>` into every `response` automatically. |
+
+The deployment runs WireMock with `--global-response-templating`, so stub bodies can use Handlebars helpers (`{{request.path}}`, `{{request.headers.X-...}}`, etc.). The pod template carries `checksum/mappings` so any change to `wiremock.mappings` rolls the pod on `helm upgrade`.
+
+### Database migration parameters
+
+The runtime image ships a self-contained EF Core migration bundle at `/app/efbundle` (built in the Dockerfile via `dotnet ef migrations bundle --self-contained --target-runtime $RID`). The migration Job invokes that binary directly — no shell, no SDK in the runtime image. The bundle reads `ConnectionStrings__PostgreSql` from the Job's `envFrom` Secret via the same `IDesignTimeDbContextFactory<AppDbContext>` the app uses at design time, so the connection string never appears on the command line.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `migrations.enabled` | bool | `true` | Enables the EF Core migration Job (Helm `pre-install`/`pre-upgrade` hook, weight `-5`). Ignored when `features.persistence != postgres`. |
+| `migrations.image.repository` | string | `ghcr.io/lurodrisilva/net-hexagonal` | Migration-runner image. Defaults to the app image because `/app/efbundle` is shipped inside it; override only if you publish a dedicated migration image variant. |
+| `migrations.image.tag` | string | `""` | Falls back to `.Chart.AppVersion`. Keep this in lockstep with `image.tag` so the bundle's embedded migrations match the app's expected schema. |
+| `migrations.image.pullPolicy` | string | `Always` | Same rationale as `image.pullPolicy` — defaults to `Always` because `:latest` is a mutable tag. |
 | `migrations.backoffLimit` | int | `3` | Job `backoffLimit`. |
 | `migrations.activeDeadlineSeconds` | int | `600` | Job `activeDeadlineSeconds` (hard upper bound on migration duration). |
 

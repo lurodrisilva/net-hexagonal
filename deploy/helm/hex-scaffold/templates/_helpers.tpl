@@ -38,6 +38,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ printf "%s:%s" .Values.migrations.image.repository $tag }}
 {{- end }}
 
+{{- define "hex-scaffold.wiremockFullname" -}}
+{{- printf "%s-wiremock" (include "hex-scaffold.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Resolves the base URL the application's HttpClient ("ExternalApi") points at.
+When wiremock.enabled, traffic is routed to the in-cluster WireMock service so
+the outbound REST adapter (IExternalApiClient) hits the mock instead of an
+external endpoint. Otherwise the value falls back to secrets.externalApiBaseUrl.
+*/}}
+{{- define "hex-scaffold.externalApiBaseUrl" -}}
+{{- if .Values.wiremock.enabled -}}
+{{- printf "http://%s:%v" (include "hex-scaffold.wiremockFullname" .) .Values.wiremock.service.port -}}
+{{- else -}}
+{{- .Values.secrets.externalApiBaseUrl -}}
+{{- end -}}
+{{- end }}
+
 {{/* Guardrails — fail fast on nonsensical feature combos. */}}
 {{- define "hex-scaffold.validateFeatures" -}}
 {{- $f := .Values.features -}}

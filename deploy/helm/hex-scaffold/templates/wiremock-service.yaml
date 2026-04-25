@@ -1,0 +1,19 @@
+{{- if .Values.wiremock.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hex-scaffold.wiremockFullname" . }}
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wiremock
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.wiremock.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "hex-scaffold.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: wiremock
+{{- end }}

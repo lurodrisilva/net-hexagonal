@@ -62,6 +62,50 @@ application:
   # ASPNETCORE_ENVIRONMENT
   environment: Production
 
+# -- WireMock — in-cluster HTTP API mock used by the outbound REST adapter
+#    (IExternalApiClient). When enabled, ExternalApi__BaseUrl is rewritten to
+#    point at the WireMock service so the app hits a deterministic mock with
+#    a baked-in response delay (default 300ms) instead of an external host.
+#    The skill `wiremock-api-mocks` documents the broader platform-tier shared-
+#    instance pattern; here we ship a self-contained, per-release WireMock for
+#    scaffold/demo use.
+wiremock:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: wiremock/wiremock
+    tag: "3-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # Global response delay (milliseconds) injected into every stub's response
+  # at render time. Lets the application's HttpClient resilience pipeline
+  # observe a realistic latency without per-stub bookkeeping.
+  fixedDelayMs: 300
+  # Stub mappings rendered as individual files into the WireMock ConfigMap and
+  # loaded at startup. The fixedDelayMs above is merged into each `response`
+  # automatically — do not duplicate it here. Add more entries as the
+  # application grows; each becomes /home/wiremock/mappings/<key>.json.
+  mappings:
+    catchall:
+      request:
+        method: ANY
+        urlPattern: ".*"
+      response:
+        status: 200
+        headers:
+          Content-Type: "application/json"
+        jsonBody:
+          source: "wiremock"
+          message: "stubbed by hex-scaffold helm chart"
+
 # -- Database migrations (PostgreSQL only). When enabled, a Helm pre-install /
 #    pre-upgrade Job runs `dotnet ef database update` before the Deployment
 #    rolls. No-op when persistence=mongo.

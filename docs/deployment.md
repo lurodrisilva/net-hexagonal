@@ -51,7 +51,10 @@ Nonsensical combinations fail the pod fast with a readable error.
 | `service.yaml` | when `features.inbound=rest` |
 | `ingress.yaml` | when `features.inbound=rest` AND `ingress.enabled=true` |
 | `hpa.yaml` | when `autoscaling.enabled=true` |
-| `migration-job.yaml` | when `features.persistence=postgres` AND `migrations.enabled=true` — pre-install / pre-upgrade Helm hook |
+| `migration-job.yaml` | when `features.persistence=postgres` AND `migrations.enabled=true` — pre-install / pre-upgrade Helm hook (weight `-5`); invokes the bundled `/app/efbundle` shipped inside the runtime image (see [`docs/database.md`](database.md)) |
+| `wiremock-deployment.yaml` · `wiremock-service.yaml` · `wiremock-mappings-configmap.yaml` | when `wiremock.enabled=true` (default) — in-cluster mock that the outbound HTTP adapter calls via `ExternalApi__BaseUrl`. The chart helper rewrites the base URL automatically; `wiremock.fixedDelayMs` (default 300ms) is injected into every stub's response. |
+
+`configmap.yaml` and `secret.yaml` carry `pre-install,pre-upgrade` hook annotations at weight `-10` so they exist before the migration Job at weight `-5` (the Job `envFrom`s them). `before-hook-creation` keeps them in the cluster after the hook completes; `helm uninstall` still removes them.
 
 ### Validating a release without hitting the cluster
 
@@ -65,7 +68,20 @@ helm template hex-scaffold ./deploy/helm/hex-scaffold \
 
 ## Image
 
-See [`Dockerfile`](../Dockerfile) (BuildKit, multi-arch, chiseled runtime, non-root). The `release` GitHub Actions workflow publishes `ghcr.io/lurodrisilva/net-hexagonal:<sha|tag>` on every push to `master` and on tags (`v*.*.*`).
+See [`Dockerfile`](../Dockerfile) (BuildKit, multi-arch, chiseled runtime, non-root). The runtime image carries two binaries:
+
+- `Hex.Scaffold.Api.dll` — the application (default `ENTRYPOINT`).
+- `/app/efbundle` — a self-contained EF Core migration bundle invoked by the Helm pre-install/pre-upgrade Job. See [`docs/database.md`](database.md#migration-delivery-efbundle-built-into-the-runtime-image).
+
+The `release` GitHub Actions workflow publishes to `ghcr.io/lurodrisilva/net-hexagonal` on every push to `master` and on tags (`v*.*.*`). Tag matrix per event:
+
+| Event | Tags applied |
+|---|---|
+| Push to `master`/`main` | `master`/`main`, `edge`, `sha-<short>`, **`latest`** |
+| Tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-<short>`, **`latest`** |
+| Pull request | builds only — never pushes |
+
+Because `:latest` is mutable, the chart defaults `image.pullPolicy=Always` and `migrations.image.pullPolicy=Always` so AKS nodes re-pull on every rollout. Override to `IfNotPresent` when pinning to immutable semver/sha tags.
 
 ## Secrets in production
 

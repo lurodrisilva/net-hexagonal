@@ -1,0 +1,19 @@
+{{- if .Values.wiremock.enabled }}
+# Stub mappings rendered from values.yaml. Each entry under wiremock.mappings
+# becomes /home/wiremock/mappings/<name>.json inside the WireMock pod and is
+# loaded at startup. wiremock.fixedDelayMs is injected into every response so
+# the global latency contract is enforced in one place.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hex-scaffold.wiremockFullname" . }}-mappings
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wiremock
+data:
+  {{- $delay := .Values.wiremock.fixedDelayMs | int }}
+  {{- range $name, $stub := .Values.wiremock.mappings }}
+  {{ $name }}.json: |
+    {{ dict "request" $stub.request "response" (set (deepCopy $stub.response) "fixedDelayMilliseconds" $delay) | toJson }}
+  {{- end }}
+{{- end }}
