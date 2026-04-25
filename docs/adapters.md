@@ -113,7 +113,12 @@ Response mapping:
 | anything else | `Result.Error(...)` |
 | `HttpRequestException` | `Result.Error(...)` |
 
-Base URL is read from `ExternalApi:BaseUrl`.
+Base URL is read from `ExternalApi:BaseUrl`. In Helm renders, the chart helper `hex-scaffold.externalApiBaseUrl` resolves this:
+
+- `wiremock.enabled=true` (default) → `http://<release>-wiremock:8080`. The HTTP adapter then talks to an in-cluster WireMock with a baked-in 300ms response delay (`wiremock.fixedDelayMs`), useful for exercising the resilience pipeline deterministically.
+- `wiremock.enabled=false` → falls back to `secrets.externalApiBaseUrl` (default `https://httpbin.org`).
+
+See [`deploy/helm/hex-scaffold/README.md#wiremock-parameters`](../deploy/helm/hex-scaffold/README.md#wiremock-parameters) for stub authoring.
 
 ---
 

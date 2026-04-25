@@ -1,0 +1,69 @@
+{{- if .Values.wiremock.enabled }}
+# In-cluster WireMock — serves as the upstream HTTP API for the outbound REST
+# adapter (IExternalApiClient) so the scaffold has deterministic behavior + a
+# global response delay (wiremock.fixedDelayMs, default 300ms) for testing the
+# Microsoft.Extensions.Http.Resilience pipeline.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hex-scaffold.wiremockFullname" . }}
+  labels:
+    {{- include "hex-scaffold.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wiremock
+spec:
+  replicas: {{ .Values.wiremock.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "hex-scaffold.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wiremock
+  template:
+    metadata:
+      labels:
+        {{- include "hex-scaffold.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wiremock
+      annotations:
+        # Roll the pod whenever the rendered stub mappings change.
+        checksum/mappings: {{ include (print $.Template.BasePath "/wiremock-mappings-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: wiremock
+          image: "{{ .Values.wiremock.image.repository }}:{{ .Values.wiremock.image.tag }}"
+          imagePullPolicy: {{ .Values.wiremock.image.pullPolicy }}
+          args:
+            - --port
+            - "{{ .Values.wiremock.service.port }}"
+            - --disable-banner
+            - --global-response-templating
+          ports:
+            - name: http
+              containerPort: {{ .Values.wiremock.service.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: mappings
+              mountPath: /home/wiremock/mappings
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /__admin/mappings
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /__admin/mappings
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.wiremock.resources | nindent 12 }}
+      volumes:
+        - name: mappings
+          configMap:
+            name: {{ include "hex-scaffold.wiremockFullname" . }}-mappings
+{{- end }}

@@ -53,6 +53,8 @@ helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
   --set secrets.appInsightsConnectionString="$APP_INSIGHTS_CS"
 ```
 
+By default the chart also renders an in-cluster **WireMock** Deployment + Service that the outbound HTTP adapter calls (with a 300ms baked-in delay), and ships a self-contained EF Core migration bundle (`/app/efbundle`) inside the runtime image so the Helm pre-install/pre-upgrade hook runs migrations without needing the .NET SDK at runtime.
+
 ### Load testing
 
 - **REST**: k6 script + k6-Operator `TestRun` at [`tests/loadtest/k6/`](tests/loadtest/k6/)
@@ -132,7 +134,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full breakdown.
 | [`docs/events.md`](docs/events.md) | Domain event dispatch, Kafka publish, read-model projection flow |
 | [`docs/observability.md`](docs/observability.md) | OpenTelemetry, Azure Application Insights, four golden signals, Serilog, health, rate limit |
 | [`docs/deployment.md`](docs/deployment.md) | Helm chart & the ConfigMap-driven adapter selector |
-| [`docs/database.md`](docs/database.md) | PostgreSQL schema, EF Core migration strategy (Helm pre-install hook + bundle) |
+| [`docs/database.md`](docs/database.md) | PostgreSQL schema, EF Core migration strategy — `/app/efbundle` shipped in the runtime image, Helm pre-install/pre-upgrade hook, design-time factory |
 | [`docs/loadtest.md`](docs/loadtest.md) | End-to-end load testing — k6 for REST, Strimzi + kafka-cli for Kafka |
 | [`docs/testing.md`](docs/testing.md) | Unit, integration, architecture test strategy |
 | [`docs/development.md`](docs/development.md) | Local infra (Docker), configuration, EF migrations, troubleshooting |
