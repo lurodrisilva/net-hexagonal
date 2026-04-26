@@ -198,7 +198,7 @@ When `wiremock.enabled=true` (the default), the chart renders an in-cluster Wire
 | `wiremock.enabled` | bool | `true` | Render WireMock resources and rewrite `ExternalApi__BaseUrl` to the WireMock service. |
 | `wiremock.replicaCount` | int | `1` | Replica count. WireMock is stateless; horizontal scaling is rarely needed for mock workloads. |
 | `wiremock.image.repository` | string | `wiremock/wiremock` | Container image. |
-| `wiremock.image.tag` | string | `3-alpine` | WireMock 3.x on Alpine — slim and arch-portable. |
+| `wiremock.image.tag` | string | `3.13.2-3-alpine` | WireMock 3.x on Alpine — slim and arch-portable. Pinned to an immutable patched tag because the floating `3-alpine` alias was returning 404 from Docker Hub in some pull contexts. |
 | `wiremock.image.pullPolicy` | string | `IfNotPresent` | Image pull policy (immutable tag). |
 | `wiremock.service.port` | int | `8080` | Service port. The chart helper `hex-scaffold.externalApiBaseUrl` builds the URL `http://<release>-wiremock:<port>` from this. |
 | `wiremock.resources` | map | `50m/128Mi` requests, `500m/256Mi` limits | Standard `resources` block. |
