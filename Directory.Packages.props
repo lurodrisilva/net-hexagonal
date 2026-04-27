@@ -28,8 +28,17 @@
     <!-- TreatWarningsAsErrors turns NU1903 into a build failure; 10.0.0 resolves both. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.6" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
+    <!-- OpenTelemetry — pinned to 1.15.3 to clear three NU1902 audit advisories -->
+    <!-- that NuGet's audit DB started flagging on 2026-04-26 and were failing CI: -->
+    <!--   * GHSA-g94r-2vxg-569j  (OpenTelemetry.Api 1.15.1, transitive) -->
+    <!--   * GHSA-mr8r-92fq-pj8p  (OpenTelemetry.Exporter.OpenTelemetryProtocol 1.14.0) -->
+    <!--   * GHSA-q834-8qmm-v933  (OpenTelemetry.Exporter.OpenTelemetryProtocol 1.14.0) -->
+    <!-- Api is added explicitly so CentralPackageTransitivePinningEnabled also -->
+    <!-- locks the transitive to 1.15.3 (Azure.Monitor.OpenTelemetry.Exporter 1.7.0 -->
+    <!-- otherwise pulls 1.15.1 transitively). -->
+    <PackageVersion Include="OpenTelemetry.Api" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.13.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.13.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.13.0" />

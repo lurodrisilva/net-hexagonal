@@ -22,6 +22,15 @@ spec:
         {{- end }}
       labels:
         {{- include "hex-scaffold.selectorLabels" . | nindent 8 }}
+        # Component label disambiguates the application pods from sibling
+        # deployments rendered by the same release (e.g. WireMock) that share
+        # the same `name` + `instance` selectorLabels. The matching label on
+        # the Service spec.selector prevents the Service from round-robining
+        # /samples traffic into a WireMock pod when both are Ready.
+        # NOTE: deliberately NOT added to spec.selector.matchLabels above —
+        # that field is immutable on existing Deployments and changing it
+        # would break helm upgrade against any release installed pre-fix.
+        app.kubernetes.io/component: api
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
