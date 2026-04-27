@@ -188,7 +188,7 @@ run() {
   logs &
   local logs_pid=$!
   cleanup_on_exit() {
-    if kill -0 "${logs_pid}" 2>/dev/null; then
+    if [[ -n "${logs_pid:-}" ]] && kill -0 "${logs_pid}" 2>/dev/null; then
       kill "${logs_pid}" 2>/dev/null || true
       wait "${logs_pid}" 2>/dev/null || true
     fi

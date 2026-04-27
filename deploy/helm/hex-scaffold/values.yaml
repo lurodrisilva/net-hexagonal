@@ -94,10 +94,10 @@ wiremock:
   resources:
     requests:
       cpu: 30m
-      memory: 96Mi
+      memory: 384Mi
     limits:
-      cpu: 100m
-      memory: 192Mi
+      cpu: 90m
+      memory: 768Mi
   # Global response delay (milliseconds) injected into every stub's response
   # at render time. Lets the application's HttpClient resilience pipeline
   # observe a realistic latency without per-stub bookkeeping.
