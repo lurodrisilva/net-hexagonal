@@ -28,9 +28,9 @@ fullnameOverride: ""
 #      redis:       true | false   (only legal when persistence=postgres)
 features:
   inbound: rest
-  outbound: kafka
+  outbound: rest
   persistence: postgres
-  redis: true
+  redis: false
 
 # -- Container-level env overrides (merged after ConfigMap/Secret refs).
 env: []
@@ -40,7 +40,7 @@ env: []
 #    the values here feed a Secret template suitable for local / demo use.
 secrets:
   # Postgres connection string (used when features.persistence=postgres)
-  postgresConnectionString: "Host=pgsql-pp.private.postgres.database.azure.com;Database=postgres;Username=adminpg;Password=$kFFb23j@%*_*);Port=5432"
+  postgresConnectionString: "Host=pgsql-pp.postgres.database.azure.com;Database=postgres;Username=adminpg;Password=$kFFb23j@%*_*KKll;Port=5432"
   # Mongo connection string  (used when features.persistence=mongo)
   mongoConnectionString: "mongodb://mongo:27017"
   # Redis connection string  (used when features.redis=true)
@@ -53,7 +53,7 @@ secrets:
   # Azure Application Insights connection string. Leave empty to disable the
   # Azure Monitor exporter (the OTLP pipeline still runs). Inject via a real
   # SecretProviderClass / ExternalSecret in production.
-  appInsightsConnectionString: ""
+  appInsightsConnectionString: "InstrumentationKey=84057efc-9957-45a5-b19b-5c60cd12890e;IngestionEndpoint=https://brazilsouth-1.in.applicationinsights.azure.com/;LiveEndpoint=https://brazilsouth.livediagnostics.monitor.azure.com/;ApplicationId=e65c9fd9-b510-48e7-894f-32f69a230d6d"
 
 application:
   port: 8080
@@ -74,7 +74,8 @@ wiremock:
   replicaCount: 1
   image:
     repository: wiremock/wiremock
-    tag: "3-alpine"
+    #tag: "3-alpine"
+    tag: "3.13.2-3-alpine"
     pullPolicy: IfNotPresent
   service:
     port: 8080
@@ -168,20 +169,20 @@ securityContext:
   capabilities:
     drop: [ALL]
 
-livenessProbe:
-  httpGet:
-    path: /healthz
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 15
-  failureThreshold: 3
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  failureThreshold: 3
+# livenessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: http
+#   initialDelaySeconds: 10
+#   periodSeconds: 15
+#   failureThreshold: 3
+# readinessProbe:
+#   httpGet:
+#     path: /ready
+#     port: http
+#   initialDelaySeconds: 5
+#   periodSeconds: 10
+#   failureThreshold: 3
 
 nodeSelector: {}
 tolerations: []
@@ -194,6 +195,12 @@ affinity: {}
 observability:
   otlp:
     endpoint: "http://otel-collector.observability.svc:4318"
+  # OpenTelemetry `service.namespace` resource attribute. Application Insights
+  # derives the Cloud-role-name on the App Map as `<namespace>.<service.name>`
+  # — leaving this empty collapses every service in the workspace to a single
+  # node. service.instance.id is set per-pod via the downward API in the
+  # Deployment template (no values knob needed).
+  serviceNamespace: "hex-scaffold"
   # Tornadoes the four golden signals (latency/traffic/errors/saturation)
   # into the Application Insights "customMetrics" table via the runtime and
   # HTTP/ASP.NET Core instrumentations that are wired in code.
