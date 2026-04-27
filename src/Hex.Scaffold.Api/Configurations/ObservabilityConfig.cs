@@ -123,28 +123,44 @@ public static class ObservabilityConfig
 
     // Live Metrics (QuickPulse) — the Azure.Monitor.OpenTelemetry.Exporter
     // package does NOT support Live Metrics; that channel is Distro-only.
-    // We register only the QuickPulseTelemetryModule from the classic AI SDK
-    // so the Live Metrics blade in the portal lights up without dragging the
-    // rest of the classic AI request/dependency collectors into the pipeline.
-    // The OTel pipeline above remains the single source of regular ingest;
-    // QuickPulse here is purely a 1-second control channel to
-    // <region>.livediagnostics.monitor.azure.com (URL derived from the
+    // We register the classic Application Insights SDK to obtain
+    // QuickPulseTelemetryModule (the 1-second control channel to
+    // <region>.livediagnostics.monitor.azure.com derived from the
     // LiveEndpoint key in APPLICATIONINSIGHTS_CONNECTION_STRING).
+    //
+    // QuickPulse does NOT generate telemetry — it subscribes to whatever the
+    // classic SDK's collectors emit into its pipeline. A previous revision
+    // disabled every collector to "keep the pipeline clean" and ended up
+    // streaming zeros to Live Metrics: request rate, request duration,
+    // dependency rate / duration, and CPU / memory all rendered empty in the
+    // portal even though the OTel side was ingesting fine.
+    //
+    // Re-enable the collectors QuickPulse needs. Trade-off: every request
+    // and every outbound dependency is now ingested twice (once via the
+    // OTel exporter above, once via the classic SDK), roughly doubling
+    // App Insights ingest cost for those signal types and producing two
+    // entries per call in the `requests` / `dependencies` tables. The App
+    // Map deduplicates on cloud_RoleName so the topology view stays clean,
+    // but KQL counters (e.g. `requests | count`) need a `summarize by
+    // sdkVersion` if you want to disambiguate. Accepted as the cost of
+    // working Live Metrics until we migrate to the AzureMonitor Distro
+    // (Azure.Monitor.OpenTelemetry.AspNetCore), which feeds Live Metrics
+    // directly off the OTel pipeline with no double-ingestion.
     if (azureMonitorEnabled)
     {
-      // AddApplicationInsightsTelemetry registers the full classic AI pipeline,
-      // including QuickPulseTelemetryModule (the Live Metrics control channel
-      // that the OTel exporter cannot provide). The classic AI request /
-      // dependency / exception collectors it also registers would normally
-      // double-emit alongside our OTel pipeline; we silence them below so the
-      // ONLY thing the classic SDK contributes is QuickPulse.
       builder.Services.AddApplicationInsightsTelemetry(o =>
       {
         o.ConnectionString = appInsightsConnectionString;
-        o.EnableRequestTrackingTelemetryModule = false;
-        o.EnableDependencyTrackingTelemetryModule = false;
+        // Required for QuickPulse to surface the four golden signals.
+        o.EnableRequestTrackingTelemetryModule    = true;
+        o.EnableDependencyTrackingTelemetryModule = true;
+        // EventCounter is the cross-platform .NET runtime counter source
+        // (CPU, GC, exception count, working set). PerformanceCounter is
+        // Windows-only and a no-op in our chiseled Linux runtime.
+        o.EnableEventCounterCollectionModule       = true;
         o.EnablePerformanceCounterCollectionModule = false;
-        o.EnableEventCounterCollectionModule = false;
+        // Off — these emit telemetry that does NOT feed Live Metrics and
+        // only adds noise to the ingestion pipeline.
         o.EnableAppServicesHeartbeatTelemetryModule = false;
         o.EnableAzureInstanceMetadataTelemetryModule = false;
         o.EnableHeartbeat = false;
