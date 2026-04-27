@@ -1,5 +1,6 @@
 using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
+using Hex.Scaffold.Domain.Ports.Outbound;
 using Hex.Scaffold.Domain.SampleAggregate;
 using Hex.Scaffold.Domain.SampleAggregate.Specifications;
 using Hex.Scaffold.Tests.Integration.Fixtures;
@@ -12,6 +13,7 @@ public class SampleRepositoryTests(IntegrationTestFixture fixture) : IAsyncLifet
 {
   private IServiceScope? _scope;
   private IRepository<Sample>? _repository;
+  private ISampleIdGenerator? _idGenerator;
   private AppDbContext? _dbContext;
 
   public async Task InitializeAsync()
@@ -19,6 +21,7 @@ public class SampleRepositoryTests(IntegrationTestFixture fixture) : IAsyncLifet
     _scope = fixture.Factory!.Services.CreateScope();
     _dbContext = _scope.ServiceProvider.GetRequiredService<AppDbContext>();
     _repository = _scope.ServiceProvider.GetRequiredService<IRepository<Sample>>();
+    _idGenerator = _scope.ServiceProvider.GetRequiredService<ISampleIdGenerator>();
 
     // EnsureCreatedAsync creates schema from model without requiring migration files.
     // Use this in tests instead of MigrateAsync — no migration history needed.
@@ -34,7 +37,8 @@ public class SampleRepositoryTests(IntegrationTestFixture fixture) : IAsyncLifet
   [Fact]
   public async Task AddAsync_WithValidSample_PersistsToDatabase()
   {
-    var sample = new Sample(SampleName.From("Integration Test Sample"));
+    var id = await _idGenerator!.NextAsync();
+    var sample = new Sample(id, SampleName.From("Integration Test Sample"));
 
     var created = await _repository!.AddAsync(sample);
 
@@ -46,7 +50,8 @@ public class SampleRepositoryTests(IntegrationTestFixture fixture) : IAsyncLifet
   [Fact]
   public async Task GetByIdAsync_ExistingSample_ReturnsSample()
   {
-    var sample = new Sample(SampleName.From("Find Me Sample"));
+    var id = await _idGenerator!.NextAsync();
+    var sample = new Sample(id, SampleName.From("Find Me Sample"));
     var created = await _repository!.AddAsync(sample);
 
     var spec = new SampleByIdSpec(created.Id);

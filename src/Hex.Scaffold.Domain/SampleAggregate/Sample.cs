@@ -2,9 +2,15 @@ using Hex.Scaffold.Domain.SampleAggregate.Events;
 
 namespace Hex.Scaffold.Domain.SampleAggregate;
 
-public class Sample(SampleName name) : EntityBase<Sample, SampleId>, IAggregateRoot
+public class Sample : EntityBase<Sample, SampleId>, IAggregateRoot
 {
-  public SampleName Name { get; private set; } = name;
+  public Sample(SampleId id, SampleName name)
+  {
+    Id = id;
+    Name = name;
+  }
+
+  public SampleName Name { get; private set; }
   public SampleStatus Status { get; private set; } = SampleStatus.NotSet;
   public string? Description { get; private set; }
 

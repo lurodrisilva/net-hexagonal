@@ -1,3 +1,4 @@
+using Hex.Scaffold.Domain.Ports.Outbound;
 using Hex.Scaffold.Domain.SampleAggregate;
 using Hex.Scaffold.Domain.SampleAggregate.Events;
 
@@ -5,6 +6,7 @@ namespace Hex.Scaffold.Application.Samples.Create;
 
 public sealed class CreateSampleHandler(
   IRepository<Sample> _repository,
+  ISampleIdGenerator _idGenerator,
   IMediator _mediator,
   ILogger<CreateSampleHandler> _logger)
   : ICommandHandler<CreateSampleCommand, Result<SampleId>>
@@ -15,7 +17,8 @@ public sealed class CreateSampleHandler(
   {
     _logger.LogInformation("Creating Sample with name {SampleName}", command.Name);
 
-    var sample = new Sample(command.Name);
+    var id = await _idGenerator.NextAsync(cancellationToken);
+    var sample = new Sample(id, command.Name);
     if (command.Description is not null)
       sample.UpdateDescription(command.Description);
 

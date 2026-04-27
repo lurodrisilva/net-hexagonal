@@ -4,6 +4,7 @@ using Hex.Scaffold.Adapters.Persistence.PostgreSql.Queries;
 using Hex.Scaffold.Application.Samples.List;
 using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Domain.Interfaces;
+using Hex.Scaffold.Domain.Ports.Outbound;
 using Hex.Scaffold.Domain.Services;
 
 namespace Hex.Scaffold.Adapters.Persistence.Extensions;
@@ -36,6 +37,7 @@ public static class PostgreSqlServiceExtensions
     services.AddScoped(typeof(IReadRepository<>), typeof(EfRepository<>));
     services.AddScoped<IListSamplesQueryService, ListSamplesQueryService>();
     services.AddScoped<IDeleteSampleService, DeleteSampleService>();
+    services.AddScoped<ISampleIdGenerator, SampleIdGenerator>();
 
     logger.LogInformation("PostgreSQL services registered.");
     return services;
