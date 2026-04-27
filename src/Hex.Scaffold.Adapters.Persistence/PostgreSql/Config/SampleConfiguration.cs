@@ -8,43 +8,29 @@ public class SampleConfiguration : IEntityTypeConfiguration<Sample>
   {
     builder.HasKey(x => x.Id);
 
-    // Sample.Id starts as `default(SampleId)` — Vogen's uninitialized struct
-    // sentinel, which throws on any access to .Value. EF Core's IdentityMap
-    // calls ValueComparer<SampleId>.GetHashCode immediately on Add, before
-    // SaveChanges, which detonates that sentinel.
+    // Sample.Id is now assigned by ISampleIdGenerator in the application
+    // handler BEFORE the entity is added to ChangeTracker, so by the time
+    // EF hashes the key in IdentityMap.Add it holds a Vogen-initialized
+    // SampleId and the previous "Use of uninitialized Value Object" crash
+    // can no longer fire. PRs #14 and #18 both tried to fix this from the
+    // EF mapping layer (UseHiLo, then HasValueGenerator) and both failed:
+    // EF gates value-generation on KeyComparer.Equals(currentValue,
+    // default(SampleId)) returning true, but Vogen-generated Equals returns
+    // false on uninitialized structs, so EF concluded the key was already
+    // set, skipped the generator, and crashed in the very next step.
     //
-    // PR #14 tried `.UseHiLo` paired with `.HasConversion`, expecting Hi-Lo
-    // to materialize a real id before IdentityMap.Add. That FAILED at
-    // runtime because for KEY properties EF's hashing step runs BEFORE the
-    // value-converter chain (and therefore before Hi-Lo). The Vogen
-    // ThrowHelper still fired.
-    //
-    // Custom ValueGenerator<SampleId> — see SampleIdValueGenerator.cs — runs
-    // EARLIER in the pipeline (during EntityGraphAttacher), gated only on
-    // `HasValueGenerator` + `ValueGeneratedOnAdd`, NOT on the value
-    // converter. By the time IdentityMap asks for the hash, the property
-    // already holds a valid SampleId pulled from `samples_hilo_seq`.
+    // The Postgres `samples_hilo_seq` sequence (created by the
+    // AddSampleIdHiLoSequence migration in PR #14) is still the source of
+    // ids — SampleIdGenerator pulls from it directly. The .UseHiLo
+    // annotation below stays purely as a snapshot anchor: it tells EF
+    // "this column is keyed off samples_hilo_seq" so `dotnet ef migrations
+    // add` produces an empty diff. Removing it would have EF default to
+    // IDENTITY-by-default and propose dropping the sequence on the next
+    // migration, breaking SampleIdGenerator.
     builder.Property(x => x.Id)
       .HasConversion(
         id => id.Value,
         value => SampleId.From(value))
-      .HasValueGenerator<SampleIdValueGenerator>()
-      .ValueGeneratedOnAdd()
-      // Anchor the model snapshot to the existing samples_hilo_seq sequence
-      // (created by the AddSampleIdHiLoSequence migration in PR #14). The
-      // Postgres-side sequence is still the source of ids — only the C# wiring
-      // of how EF READS from it changed (custom ValueGenerator instead of
-      // EF's built-in HiLoValueGenerator). At runtime SampleIdValueGenerator
-      // wins (HasValueGenerator above takes precedence over .UseHiLo's built-
-      // in generator); at snapshot/migration time the .UseHiLo annotation
-      // tells EF "this column is already keyed off samples_hilo_seq" so the
-      // diff against the pre-existing snapshot is EMPTY.
-      // Without this anchor, EF's default value-generation strategy for int
-      // PKs is IDENTITY-by-default, and the next `dotnet ef migrations add`
-      // would propose dropping the sequence and altering the column —
-      // breaking SampleIdValueGenerator at the next helm upgrade and tripping
-      // PendingModelChangesWarning (escalated to error by TreatWarningsAsErrors)
-      // on every existing migration runner pod.
       .UseHiLo("samples_hilo_seq");
 
     builder.Property(x => x.Name)
