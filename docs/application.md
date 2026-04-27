@@ -1,6 +1,6 @@
 # Application layer
 
-The Application layer contains the **use cases** — commands for state changes, queries for reads. Each use case is a feature folder under [`Application/Samples/`](../src/Hex.Scaffold.Application/Samples) with a request, a handler, and (optionally) a feature-scoped port.
+The Application layer contains the **use cases** — commands for state changes, queries for reads. Each use case is a feature folder under [`Application/Accounts/`](../src/Hex.Scaffold.Application/Accounts) with a request, a handler, and (optionally) a feature-scoped port.
 
 ## CQRS with Mediator
 
@@ -20,58 +20,77 @@ flowchart LR
 
 | Folder | Type | Port used | Result |
 |---|---|---|---|
-| `Create/` | Command | `IRepository<Sample>`, `IMediator` | `Result<SampleId>` |
-| `Update/` | Command | `IRepository<Sample>` | `Result<SampleDto>` |
-| `Delete/` | Command | `IDeleteSampleService` (domain service) | `Result` |
-| `Get/GetSampleQuery` | Query | `IReadRepository<Sample>`, `ICacheService` | `Result<SampleDto>` |
-| `Get/GetExternalSampleInfoQuery` | Query | `IExternalApiClient` | `Result<string>` |
-| `List/` | Query | `IListSamplesQueryService` (Dapper) | `Result<PagedResult<SampleDto>>` |
+| `Create/` | Command | `IRepository<Account>`, `IMediator` | `Result<AccountDto>` |
+| `Update/` | Command | `IRepository<Account>` | `Result<AccountDto>` |
+| `Get/` | Query | `IReadRepository<Account>`, `ICacheService` | `Result<AccountDto>` |
+| `List/` | Query | `IListAccountsQueryService` | `Result<AccountListResult>` |
 
-### CreateSample
+### CreateAccount
 
-[`CreateSampleHandler`](../src/Hex.Scaffold.Application/Samples/Create/CreateSampleHandler.cs):
+[`CreateAccountHandler`](../src/Hex.Scaffold.Application/Accounts/Create/CreateAccountHandler.cs):
 
 ```csharp
-var sample = new Sample(command.Name);
-if (command.Description is not null) sample.UpdateDescription(command.Description);
+var account = Account.Create(
+  livemode: command.Livemode,
+  displayName: command.DisplayName,
+  contactEmail: command.ContactEmail,
+  contactPhone: command.ContactPhone,
+  appliedConfigurations: command.AppliedConfigurations,
+  configurationJson: command.ConfigurationJson,
+  identityJson: command.IdentityJson,
+  defaultsJson: command.DefaultsJson,
+  metadataJson: command.MetadataJson);
 
-var created = await _repository.AddAsync(sample, cancellationToken);
-await _mediator.Publish(new SampleCreatedEvent(created), cancellationToken);
+var created = await _repository.AddAsync(account, cancellationToken);
+await _mediator.Publish(new AccountCreatedEvent(created), cancellationToken);
 
-return created.Id;
+return AccountDto.FromAggregate(created);
 ```
 
-`SampleCreatedEvent` is published explicitly here because there is no state change event raised on construction. `UpdateName`, `Activate`, and `Deactivate` raise events themselves — those flow through EF's interceptor (see [`events.md`](events.md)).
+`Account.Create` generates the `acct_…` ID inside the domain before the entity is added to ChangeTracker, and registers `AccountCreatedEvent` in-aggregate. The handler also publishes the event explicitly through Mediator so cache invalidation + Kafka publish can run in the same logical operation as the create.
 
-### UpdateSample
+### UpdateAccount — partial update semantics
 
-Loads by `SampleByIdSpec`, applies intent-revealing methods, saves:
+The command carries `(bool HasValue, T? Value)` tuples for every mutable field, mirroring Stripe's omitted-vs-explicit-null distinction. `UpdateAccountHandler` loads by `AccountByIdSpec`, calls the aggregate's single mutation method, and saves:
 
 ```csharp
-sample.UpdateName(command.Name)
-      .UpdateDescription(command.Description);
+var account = await _repository.FirstOrDefaultAsync(
+  new AccountByIdSpec(command.Id), cancellationToken);
+if (account is null) return Result<AccountDto>.NotFound();
 
-await _repository.UpdateAsync(sample, cancellationToken);
+account.ApplyUpdate(
+  displayName:           command.DisplayName,
+  contactEmail:          command.ContactEmail,
+  contactPhone:          command.ContactPhone,
+  appliedConfigurations: command.AppliedConfigurations,
+  configurationJson:     command.ConfigurationJson,
+  identityJson:          command.IdentityJson,
+  defaultsJson:          command.DefaultsJson,
+  metadataJson:          command.MetadataJson);
+
+await _repository.UpdateAsync(account, cancellationToken);
+
+return AccountDto.FromAggregate(account);
 ```
 
-Any events registered by `UpdateName` are dispatched by `EventDispatcherInterceptor` after `SaveChanges`.
+Any `AccountUpdatedEvent` registered by `ApplyUpdate` is dispatched by `EventDispatcherInterceptor` after `SaveChanges`.
 
-### GetSample (cached)
+### GetAccount (cached)
 
 Demonstrates the read-through cache pattern:
 
 ```mermaid
 sequenceDiagram
-    participant H as GetSampleHandler
+    participant H as GetAccountHandler
     participant C as Redis
     participant R as Postgres
 
-    H->>C: GetAsync("sample:{id}")
+    H->>C: GetAsync("account:{id}")
     alt cache hit
-        C-->>H: SampleDto
+        C-->>H: AccountDto
     else cache miss
-        H->>R: FirstOrDefaultAsync(SampleByIdSpec)
-        R-->>H: Sample | null
+        H->>R: FirstOrDefaultAsync(AccountByIdSpec)
+        R-->>H: Account | null
         alt not found
             H-->>H: return NotFound
         else found
@@ -81,24 +100,30 @@ sequenceDiagram
     end
 ```
 
-Cache invalidation is event-driven — `SampleEventPublishHandler` removes `sample:{id}` and `samples:list` on update/delete events.
+Cache invalidation is event-driven — `AccountEventPublishHandler` removes `account:{id}` and `accounts:list` on `AccountUpdatedEvent`.
 
-### ListSamples
+### ListAccounts — cursor pagination
 
-Uses a **Dapper** query service (`IListSamplesQueryService`) rather than EF to avoid change-tracking overhead and to allow hand-tuned SQL for paginated reads. The Application layer defines the port; the Persistence adapter implements it.
+Stripe's wire shape: `{object: "list", data: [...], has_more}`. No total count, no page numbers — both are deliberately absent.
 
-### GetExternalInfo
+```csharp
+public sealed record ListAccountsQuery(
+  int Limit,
+  string? StartingAfter,
+  string? EndingBefore)
+  : IQuery<Result<AccountListResult>>;
+```
 
-Demonstrates the outbound HTTP adapter via `IExternalApiClient`. The default `BaseUrl` points at `httpbin.org` for easy experimentation.
+Defaults: `Limit = 10`, max `100` (matches Stripe). The handler delegates to `IListAccountsQueryService` (Postgres adapter implements it) and wraps the result in `AccountListResult.Wrap(items, hasMore)`.
 
 ## DTOs
 
 | DTO | Used by |
 |---|---|
-| `SampleDto(SampleId, SampleName, SampleStatus, string?)` | Query results |
-| `PagedResult<T>(Items, Page, PerPage, TotalCount, TotalPages)` | Paginated queries |
+| `AccountDto(Id, Object, Livemode, Created, Closed, DisplayName, ContactEmail, ContactPhone, Dashboard, AppliedConfigurations, Configuration, Identity, Defaults, Requirements, FutureRequirements, Metadata)` | All endpoints; nested fields are `JsonElement?` |
+| `AccountListResult(Object, Data, HasMore)` | List endpoint envelope |
 
-DTOs keep value objects (so consumers can rely on `.Value` / `.Name`). Inbound adapters unwrap them to primitives for wire contracts.
+`AccountDto.FromAggregate` parses the aggregate's persisted JSON strings into `JsonElement` so System.Text.Json serializes them verbatim (no re-parse into a typed graph). Inbound adapters bind PascalCase property names; the global `JsonNamingPolicy.SnakeCaseLower` policy at the FastEndpoints serializer level renders them as Stripe-style `applied_configurations`, `contact_email`, `display_name`, `has_more`, etc.
 
 ## LoggingBehavior
 
@@ -110,9 +135,9 @@ DTOs keep value objects (so consumers can rely on `.Value` / `.Name`). Inbound a
 
 It is added once in `MediatorConfig` and applies to every command and query.
 
-## Constants & pagination
+## Constants
 
-`Constants.DefaultPageSize = 10`, `Constants.MaxPageSize = 50`. `ListSamplesQuery` defaults are routed through here.
+`Constants.DefaultPageSize = 10`, `Constants.MaxPageSize = 50`. The cursor-paginated list path uses its own constants on `ListAccountsHandler` (`DefaultLimit = 10`, `MaxLimit = 100`) which are tighter and Stripe-aligned; the project-level constants are kept for any future paginated endpoint that follows the older shape.
 
 ## Global usings
 

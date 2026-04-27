@@ -61,21 +61,34 @@ Tests are tagged with `[Trait("Category", "...")]` so you can filter by tier. Ca
 
 Two kinds:
 
-1. **Domain** ([`Domain/SampleAggregateTests.cs`](../tests/Hex.Scaffold.Tests.Unit/Domain/SampleAggregateTests.cs)) — construct aggregates, call methods, assert state and registered events. Zero mocks, zero IO.
-2. **Application** ([`Application/CreateSampleHandlerTests.cs`](../tests/Hex.Scaffold.Tests.Unit/Application/CreateSampleHandlerTests.cs)) — substitute repositories and Mediator with NSubstitute, exercise a handler, assert outputs and interactions.
+1. **Domain** ([`Domain/AccountAggregateTests.cs`](../tests/Hex.Scaffold.Tests.Unit/Domain/AccountAggregateTests.cs)) — construct aggregates, call methods, assert state and registered events. Zero mocks, zero IO.
+2. **Application** ([`Application/CreateAccountHandlerTests.cs`](../tests/Hex.Scaffold.Tests.Unit/Application/CreateAccountHandlerTests.cs)) — substitute repositories and Mediator with NSubstitute, exercise a handler, assert outputs and interactions.
 
 Example:
 
 ```csharp
 [Fact]
-public void UpdateName_WithDifferentName_RegistersUpdatedEvent()
+public void ApplyUpdate_OmittedFields_AreLeftAlone()
 {
-  var sample = new Sample(SampleName.From("Original"));
-  sample.UpdateName(SampleName.From("Updated"));
+  var account = Account.Create(
+    livemode: false, displayName: "Original",
+    contactEmail: "x@example.com", contactPhone: null,
+    appliedConfigurations: [AppliedConfiguration.Customer],
+    configurationJson: null, identityJson: null,
+    defaultsJson: null, metadataJson: null);
+  account.ClearDomainEvents();
 
-  sample.Name.ShouldBe(SampleName.From("Updated"));
-  sample.DomainEvents.Count.ShouldBe(1);
-  sample.DomainEvents.First().ShouldBeOfType<SampleUpdatedEvent>();
+  account.ApplyUpdate(
+    displayName: (true, "New"),
+    contactEmail: (false, null),  // omitted — should not change
+    contactPhone: (false, null),
+    appliedConfigurations: (false, null),
+    configurationJson: (false, null), identityJson: (false, null),
+    defaultsJson: (false, null), metadataJson: (false, null));
+
+  account.DisplayName.ShouldBe("New");
+  account.ContactEmail.ShouldBe("x@example.com");
+  account.DomainEvents.First().ShouldBeOfType<AccountUpdatedEvent>();
 }
 ```
 
@@ -96,14 +109,14 @@ The fixture spins up both containers, then starts a `WebApplicationFactory<Progr
 
 An xUnit `ICollectionFixture<IntegrationTestFixture>` shares the containers across tests in the `"IntegrationTests"` collection.
 
-Example ([`Persistence/SampleRepositoryTests.cs`](../tests/Hex.Scaffold.Tests.Integration/Persistence/SampleRepositoryTests.cs)):
+Example shape (an `AccountRepositoryTests` is the natural counterpart — the Sample-era `SampleRepositoryTests` was retired alongside the Sample aggregate; the Account replacement is a follow-up that needs a Docker-equipped environment to land):
 
 ```csharp
 public async Task InitializeAsync()
 {
   _scope = fixture.Factory!.Services.CreateScope();
   _dbContext = _scope.ServiceProvider.GetRequiredService<AppDbContext>();
-  _repository = _scope.ServiceProvider.GetRequiredService<IRepository<Sample>>();
+  _repository = _scope.ServiceProvider.GetRequiredService<IRepository<Account>>();
   await _dbContext.Database.EnsureCreatedAsync();
 }
 ```
@@ -124,7 +137,7 @@ Uses **NetArchTest** to enforce the dependency rules at build time. Every rule i
 | `AdaptersInbound_ShouldNotDependOn_OutboundOrPersistence` | Inbound is isolated from other adapters |
 | `AdaptersOutbound_ShouldNotDependOn_ApplicationOrInbound` | Outbound depends only on Domain |
 | `AdaptersPersistence_ShouldNotDependOn_InboundOrOutbound` | Persistence depends on Domain (+ Application for query services) |
-| `DomainEntities_ShouldHaveOnlyPrivateSetters` | `Sample` has no public setters |
+| `DomainEntities_ShouldHaveOnlyPrivateSetters` | `Account` has no public setters on its declared properties |
 
 **These must pass for any PR.** They are cheap to run (no I/O) and catch drift immediately.
 

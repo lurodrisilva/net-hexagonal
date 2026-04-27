@@ -39,7 +39,16 @@ kubectl logs -l app.kubernetes.io/instance=hex-scaffold --tail=100
 
 ## 2. REST API load test (k6 Operator)
 
-The k6 script lives at [`tests/loadtest/k6/rest-api-loadtest.js`](../tests/loadtest/k6/rest-api-loadtest.js) and covers the full `/samples` CRUD flow (POST → GET → PATCH → DELETE) plus a read-heavy scenario, with per-request thresholds tied to the **four golden signals**:
+The k6 script lives at [`tests/loadtest/k6/rest-api-loadtest.js`](../tests/loadtest/k6/rest-api-loadtest.js) and covers the four endpoints exposed by the Stripe v2 Accounts API surface:
+
+```
+POST /v2/core/accounts          create
+GET  /v2/core/accounts/{id}     retrieve
+POST /v2/core/accounts/{id}     update (partial; Stripe uses POST)
+GET  /v2/core/accounts          list (cursor-paginated)
+```
+
+The CRUD scenario is `POST → GET → POST(update)` (no DELETE — `Account.close` is not surfaced as an endpoint; out of scope). A read-heavy `list_heat` scenario hits the first cursor page repeatedly to keep the read path warm. Per-request thresholds are tied to the **four golden signals**:
 
 | Signal | k6 metric |
 |--------|-----------|
@@ -54,16 +63,21 @@ The k6 script lives at [`tests/loadtest/k6/rest-api-loadtest.js`](../tests/loadt
 # 1. Install the operator if you haven't already
 kubectl apply -k "github.com/grafana/k6-operator/config/default?ref=main"
 
-# 2. Package the script as a ConfigMap
-kubectl create configmap hex-scaffold-loadtest \
-  --from-file=rest-api-loadtest.js=tests/loadtest/k6/rest-api-loadtest.js \
-  --dry-run=client -o yaml | kubectl apply -f -
+# 2. Run end-to-end via the orchestration script (apply → tail logs → wait → cleanup)
+./tests/loadtest/k6/loadtest.sh run
 
-# 3. Launch the test run
-kubectl apply -f tests/loadtest/k6/testrun.yaml
-kubectl get testruns
-kubectl logs -l k6_cr=hex-scaffold-rest-loadtest -f
+# Or step-by-step:
+./tests/loadtest/k6/loadtest.sh prereq   # verify CRDs + service reachability
+./tests/loadtest/k6/loadtest.sh apply    # ConfigMap + TestRun
+./tests/loadtest/k6/loadtest.sh logs     # tail runner pods (Ctrl-C to detach)
+./tests/loadtest/k6/loadtest.sh wait     # block until stage=finished/error
+./tests/loadtest/k6/loadtest.sh summary  # extract the textSummary block
+./tests/loadtest/k6/loadtest.sh cleanup  # delete TestRun + ConfigMap
 ```
+
+Tunables: `NAMESPACE`, `BASE_URL`, `PARALLELISM`, `TIMEOUT`, `TESTRUN_NAME`, `CONFIGMAP_NAME` — environment variables documented in the script's help (`./loadtest.sh help`).
+
+> **Bump the rate limiter first.** The chart defaults to `permitLimit: 100, windowSeconds: 60` per IP. The k6 ramped profile peaks at 150 req/s, so without a higher cap the runners will be 429-throttled and `golden_throttled_rate` will dominate the run. `helm upgrade --set rateLimit.permitLimit=100000` before running.
 
 ### 2.2 Run locally
 
@@ -82,26 +96,13 @@ Uncomment the Prometheus remote_write arguments in `testrun.yaml`, then set the 
 
 ## 3. Kafka load test (Strimzi + kafka-cli)
 
-The Kafka driver at [`tests/loadtest/kafka/load-test.sh`](../tests/loadtest/kafka/load-test.sh) follows the AWS data-on-eks pattern: it runs inside a Strimzi Kafka image (`quay.io/strimzi/kafka:*`) that ships every CLI you need (`kafka-topics.sh`, `kafka-console-producer.sh`, `kafka-producer-perf-test.sh`).
+> **Status note.** The Kafka driver at [`tests/loadtest/kafka/load-test.sh`](../tests/loadtest/kafka/load-test.sh) and the committed event deck at [`tests/loadtest/kafka/sample-events.jsonl`](../tests/loadtest/kafka/sample-events.jsonl) still target the prior **Sample** aggregate, which has been retired in favor of the **Account** aggregate. The driver hasn't been migrated yet — the inbound `AccountEventConsumer` is intentionally minimal (log + commit) and doesn't drive a read-model the way the prior `SampleEventConsumer` did, so the Kafka path needs a fresh design before a new event deck makes sense. Tracked as a follow-up.
 
-### 3.1 Sample event deck
+The remainder of this section describes the historical setup so the existing kafka tooling stays understandable. The driver follows the AWS data-on-eks pattern: it runs inside a Strimzi Kafka image (`quay.io/strimzi/kafka:*`) that ships every CLI you need (`kafka-topics.sh`, `kafka-console-producer.sh`, `kafka-producer-perf-test.sh`).
 
-[`sample-events.jsonl`](../tests/loadtest/kafka/sample-events.jsonl) contains **25 committed events** exercising the full event vocabulary:
+### 3.1 Sample event deck (legacy)
 
-| Event type | Count | Notes |
-|------------|-------|-------|
-| `SampleCreatedEvent` | 13 | covers Active / Inactive / NotSet, `null` descriptions, long descriptions |
-| `SampleUpdatedEvent` | 7 | name+description change, status transition, `null` description |
-| `SampleDeletedEvent` | 5 | exercises the delete handler + read-model cleanup |
-
-Every event's JSON payload is **schema-adherent** to the `Samples` table:
-
-| Field | JSON path | SQL column | Constraint |
-|-------|-----------|------------|------------|
-| Id | `Sample.Id.Value` | `Id` (integer, PK) | required, unique |
-| Name | `Sample.Name` | `Name` (varchar 200, NOT NULL) | 1-200 chars |
-| Status | `Sample.Status.Name` | `Status` (integer) | `Active`\|`Inactive`\|`NotSet` |
-| Description | `Sample.Description` | `Description` (varchar 1000, NULL) | 0-1000 chars or null |
+[`sample-events.jsonl`](../tests/loadtest/kafka/sample-events.jsonl) contains **25 committed events** exercising the prior Sample aggregate's event vocabulary (`SampleCreatedEvent` / `SampleUpdatedEvent` / `SampleDeletedEvent`). It is **not consumed by the current `AccountEventConsumer`** — left in the tree for reference until the Kafka path is migrated.
 
 ### 3.2 Run in-cluster (Strimzi)
 
@@ -149,7 +150,7 @@ All signals flow through the OpenTelemetry pipeline configured in [`Observabilit
 
 | Azure Monitor view | Shows |
 |--------------------|-------|
-| **Application Map** | `/samples` RPS + dependency edges to Postgres / Mongo / Kafka |
+| **Application Map** | `/v2/core/accounts` RPS + dependency edges to Postgres / Kafka (Mongo unused at present — see `docs/adapters.md`) |
 | **Live Metrics** | real-time RPS, failure rate, duration |
 | **Failures** | 4xx/5xx from `requests` + tracked exceptions |
 | **Performance** | latency percentiles per operation |

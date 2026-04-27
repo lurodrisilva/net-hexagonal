@@ -2,9 +2,9 @@
 
 The Domain layer is the purest part of the solution. It has no framework dependencies beyond `Mediator.Abstractions`, `Vogen`, and `Microsoft.Extensions.Logging.Abstractions`. Everything here is expressed in terms of the business — aggregates, value objects, events, and ports.
 
-## Sample aggregate
+## Account aggregate
 
-`Sample` is the only aggregate root in the scaffold. It demonstrates every pattern the template supports.
+`Account` is the only aggregate root in the scaffold. It reproduces the **Stripe v2 `v2.core.account`** wire shape and demonstrates every pattern the template supports.
 
 ```mermaid
 classDiagram
@@ -21,97 +21,108 @@ classDiagram
     class IAggregateRoot
     <<interface>> IAggregateRoot
 
-    class Sample {
-        +SampleName Name
-        +SampleStatus Status
-        +string? Description
-        +UpdateName(SampleName) Sample
-        +UpdateDescription(string?) Sample
-        +Activate() Sample
-        +Deactivate() Sample
+    class Account {
+        +bool Livemode
+        +DateTime Created
+        +bool Closed
+        +string? DisplayName
+        +string? ContactEmail
+        +string? ContactPhone
+        +string? Dashboard
+        +List~string~ AppliedConfigurations
+        +string? ConfigurationJson
+        +string? IdentityJson
+        +string? DefaultsJson
+        +string? RequirementsJson
+        +string? FutureRequirementsJson
+        +string? MetadataJson
+        +Create(...) Account$
+        +ApplyUpdate(...) Account
+        +Close() Account
     }
 
-    class SampleId {
-        <<value object>>
-        +int Value
-    }
-
-    class SampleName {
+    class AccountId {
         <<value object>>
         +string Value
-        +MaxLength = 200
+        +Prefix = "acct_"
     }
 
-    class SampleStatus {
-        <<SmartEnum>>
-        +Active
-        +Inactive
-        +NotSet
+    class AppliedConfiguration {
+        <<closed set>>
+        +Customer
+        +Merchant
+        +Recipient
     }
 
     HasDomainEventsBase <|-- EntityBase
-    EntityBase <|-- Sample
-    IAggregateRoot <|.. Sample
-    Sample --> SampleId
-    Sample --> SampleName
-    Sample --> SampleStatus
+    EntityBase <|-- Account
+    IAggregateRoot <|.. Account
+    Account --> AccountId
+    Account --> AppliedConfiguration
 ```
 
-`Sample` lives at [`src/Hex.Scaffold.Domain/SampleAggregate/Sample.cs`](../src/Hex.Scaffold.Domain/SampleAggregate/Sample.cs).
+`Account` lives at [`src/Hex.Scaffold.Domain/AccountAggregate/Account.cs`](../src/Hex.Scaffold.Domain/AccountAggregate/Account.cs).
 
-Key invariants:
+### Top-level scalars vs nested blobs
 
-- Setters are **private**. State changes happen through intention-revealing methods (`UpdateName`, `Activate`, `Deactivate`).
-- Methods register **domain events** when something meaningful happens. They no-op if the state would not actually change (e.g. `UpdateName` when the name matches).
-- Methods return `this` to support fluent chaining (see `UpdateSampleHandler`).
-- The architecture test `DomainEntities_ShouldHaveOnlyPrivateSetters` enforces the private-setter rule on `Sample`.
+The class doc on `Account` explains the persistence model: top-level fields (id, livemode, created, contact_email, applied_configurations, …) are persisted as proper Postgres columns; **nested Stripe objects** (`configuration`, `identity`, `defaults`, `requirements`, `future_requirements`, `metadata`) live as raw JSON strings on `*Json` properties, round-tripped through `jsonb` columns. Trade-off: not modelling Stripe's ~80 nested record types (50+ payment-method capabilities, 200+ tax-id types, every ISO-3166 country, …) keeps the surface manageable while preserving the wire format byte-for-byte. The API boundary parses these strings into `JsonElement` for serialization.
+
+### Key invariants
+
+- **All declared properties have private setters.** State changes go through `Account.Create(...)`, `ApplyUpdate(...)`, or `Close()`. The architecture test `DomainEntities_ShouldHaveOnlyPrivateSetters` enforces this on `Account`'s declared members (the inherited `EntityBase.Id` setter is allowed for ORM rehydration).
+- **ID generation is in-domain.** `Account.Create()` calls a private `NewId()` that hands a fully-initialised `AccountId` to the constructor before EF's `IdentityMap.Add` ever touches the entity. There is no Hi-Lo sequence and no `IAccountIdGenerator` port — the scaffold's earlier journey through Vogen + EF key-hashing taught the lesson that the only safe ordering is "ID set in domain before ChangeTracker sees it".
+- **`ApplyUpdate` is the single mutation site for Stripe's partial-update semantics.** Each field is a `(bool HasValue, T? Value)` tuple: omitted = leave alone, present-with-null = clear, present-with-value = set. The aggregate emits `AccountUpdatedEvent` once per call only when at least one field actually changed.
+- **`Close()` is the v2 replacement for "delete".** Implemented but no endpoint exposes it — surface area is intentionally limited to the four endpoints requested.
+
+### Dashboard derivation
+
+The `dashboard` field is derived from `applied_configurations` at create / update time:
+
+| Applied configurations include… | Dashboard |
+|---|---|
+| `merchant` or `customer` | `full` |
+| `recipient` only | `express` |
+| none | `none` |
+
+Mirrors Stripe's example payload (`acct_…` with customer + merchant → `dashboard: "full"`).
 
 ## Value objects (Vogen)
 
-`SampleId` and `SampleName` are [Vogen](https://github.com/SteveDunn/Vogen) value objects. They are structs with compile-time-generated equality, validation, and a `.From(value)` factory that throws `ValueObjectValidationException` on invalid input.
+`AccountId` is a [Vogen](https://github.com/SteveDunn/Vogen) string-typed value object. The `acct_` prefix is enforced at construction time:
 
 ```csharp
-// src/Hex.Scaffold.Domain/SampleAggregate/SampleId.cs
-[ValueObject<int>]
-public readonly partial struct SampleId
-{
-  private static Validation Validate(int value)
-    => value > 0 ? Validation.Ok : Validation.Invalid("SampleId must be positive.");
-}
-```
-
-```csharp
-// src/Hex.Scaffold.Domain/SampleAggregate/SampleName.cs
+// src/Hex.Scaffold.Domain/AccountAggregate/AccountId.cs
 [ValueObject<string>(conversions: Conversions.SystemTextJson)]
-public partial struct SampleName
+public readonly partial struct AccountId
 {
-  public const int MaxLength = 200;
+  public const string Prefix = "acct_";
 
-  private static Validation Validate(in string value) =>
-    string.IsNullOrWhiteSpace(value)
-      ? Validation.Invalid("SampleName cannot be empty")
-      : value.Length > MaxLength
-        ? Validation.Invalid($"SampleName cannot be longer than {MaxLength} characters")
-        : Validation.Ok;
+  private static Validation Validate(string value)
+    => !string.IsNullOrWhiteSpace(value) && value.StartsWith(Prefix, StringComparison.Ordinal)
+      ? Validation.Ok
+      : Validation.Invalid($"AccountId must start with '{Prefix}'.");
 }
 ```
 
-`SampleName` opts into `Conversions.SystemTextJson` so it serialises as a plain string (important for Kafka event payloads — see `events.md`). `SampleId` deliberately does *not* — it serialises as `{"Value": N}`, which the Kafka consumer accounts for.
+`Conversions.SystemTextJson` makes the ID serialize as a plain string on the wire (e.g. `"id": "acct_AbC…"`) — which is what Stripe's API surface expects.
 
-## SmartEnum
+## AppliedConfiguration
 
-`SampleStatus` is a hand-rolled `SmartEnum<TEnum>` (see [`Common/SmartEnum.cs`](../src/Hex.Scaffold.Domain/Common/SmartEnum.cs)). Instances are compared by reference; lookups are supported via `FromValue(int)` and `FromName(string)`.
+Not a SmartEnum (the scaffold's `SmartEnum<TEnum>` is int-keyed; Stripe's wire values are strings). `AppliedConfiguration` is a closed sealed class with three named singletons:
 
 ```csharp
-public sealed class SampleStatus : SmartEnum<SampleStatus>
+public sealed class AppliedConfiguration : IEquatable<AppliedConfiguration>
 {
-  public static readonly SampleStatus Active = new(nameof(Active), 1);
-  public static readonly SampleStatus Inactive = new(nameof(Inactive), 2);
-  public static readonly SampleStatus NotSet = new(nameof(NotSet), 3);
+  public static readonly AppliedConfiguration Customer  = new("customer");
+  public static readonly AppliedConfiguration Merchant  = new("merchant");
+  public static readonly AppliedConfiguration Recipient = new("recipient");
+
+  public static IReadOnlyList<AppliedConfiguration> List { get; } =
+    [Customer, Merchant, Recipient];
 }
 ```
 
-The EF `SampleConfiguration` persists `Status` as its `int` value and rehydrates via `SampleStatus.FromValue(value)`.
+The aggregate stores them as a Postgres `text[]` for queryability — `WHERE 'merchant' = ANY(applied_configurations)` is the routing predicate Connect-style flows want.
 
 ## Result pattern
 
@@ -124,19 +135,18 @@ The EF `SampleConfiguration` persists `Status` as its `int` value and rehydrates
 | `Invalid` | Validation failed. Carries `ValidationError` list. |
 | `Error` | Unexpected failure. Carries `Errors` list. |
 
-`Result<T>.Success(value)` has an implicit conversion from `T`, so handlers can `return created.Id;` directly.
+`Result<T>.Success(value)` has an implicit conversion from `T`, so handlers can `return AccountDto.FromAggregate(account);` directly.
 
-Use cases return `Result`/`Result<T>`. Inbound adapters (`ResultExtensions`) translate them into typed HTTP responses (`201`, `200`, `404`, `400`, `500`).
+Use cases return `Result`/`Result<T>`. Inbound adapters (`ResultExtensions`) translate them into typed HTTP responses (`200`, `404`, `400`, `500`).
 
 ## Domain events
 
-Domain events inherit `DomainEventBase : INotification` ([`Common/DomainEventBase.cs`](../src/Hex.Scaffold.Domain/Common/DomainEventBase.cs)) and are registered on aggregates via `HasDomainEventsBase.RegisterDomainEvent`.
+Domain events inherit `DomainEventBase : INotification` ([`Common/DomainEventBase.cs`](../src/Hex.Scaffold.Domain/Common/DomainEventBase.cs)) and are registered on the aggregate via `HasDomainEventsBase.RegisterDomainEvent`.
 
-Three events ship out of the box:
+Two events ship out of the box:
 
-- `SampleCreatedEvent(Sample)`
-- `SampleUpdatedEvent(Sample)`
-- `SampleDeletedEvent(SampleId)`
+- `AccountCreatedEvent(Account)`
+- `AccountUpdatedEvent(Account)` — also emitted on `Close()`
 
 See [`events.md`](events.md) for the dispatch pipeline.
 
@@ -145,9 +155,9 @@ See [`events.md`](events.md) for the dispatch pipeline.
 `Specification<T>` ([`Common/Specification.cs`](../src/Hex.Scaffold.Domain/Common/Specification.cs)) is a minimal composable predicate:
 
 ```csharp
-public sealed class SampleByIdSpec : Specification<Sample>
+public sealed class AccountByIdSpec : Specification<Account>
 {
-  public SampleByIdSpec(SampleId id) => Query.Where(s => s.Id == id);
+  public AccountByIdSpec(AccountId id) => Query.Where(a => a.Id == id);
 }
 ```
 
@@ -161,13 +171,12 @@ Interfaces live in [`Domain/Ports/Outbound/`](../src/Hex.Scaffold.Domain/Ports/O
 |---|---|---|
 | `IRepository<T>` | Write-side persistence for aggregates | `EfRepository<T>` |
 | `IReadRepository<T>` | Read-side repository (same impl here) | `EfRepository<T>` |
-| `IEventPublisher` | Publish integration events | `KafkaEventPublisher` |
-| `ICacheService` | Distributed cache | `RedisCacheService` |
+| `IEventPublisher` | Publish integration events | `KafkaEventPublisher` (or `NoOpEventPublisher` when outbound=rest) |
+| `ICacheService` | Distributed cache | `RedisCacheService` (or `NullCacheService` when UseRedis=false) |
 | `IExternalApiClient` | Outbound HTTP | `ExternalApiClient` |
-| `ISampleReadModelRepository` | Mongo projection for read models | `SampleReadModelRepository` |
 
-The Application layer may also declare feature-scoped ports (e.g. `IListSamplesQueryService`).
+The Application layer may also declare feature-scoped ports — `IListAccountsQueryService` for the cursor-paginated list path is one such example, defined alongside its query under `Application/Accounts/List/`.
 
-## Domain services
+## SmartEnum (still available)
 
-When an operation spans multiple aggregates or requires cross-cutting coordination, use a domain service. `DeleteSampleService` ([`Services/DeleteSampleService.cs`](../src/Hex.Scaffold.Domain/Services/DeleteSampleService.cs)) is the example — it loads the aggregate, deletes it, and publishes a `SampleDeletedEvent`. The application `DeleteSampleHandler` simply delegates to it.
+`SmartEnum<TEnum>` ([`Common/SmartEnum.cs`](../src/Hex.Scaffold.Domain/Common/SmartEnum.cs)) is the int-keyed SmartEnum base the scaffold ships. The Account aggregate doesn't use it — `AppliedConfiguration` needs string values to match the Stripe wire format — but the type is kept available for cases where an int-keyed enumeration *with* persistence + name lookup makes sense.
