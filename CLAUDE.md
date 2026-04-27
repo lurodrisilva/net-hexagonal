@@ -42,24 +42,28 @@ Domain  <--  Application  <--  Adapters.Inbound
 - **Adapter projects** depend on Domain (and Persistence also on Application for query services), never on each other.
 - **Api** is the composition root — references all projects, wires DI via `Configurations/ServiceConfigs.cs`.
 
+### Domain surface
+
+The aggregate exposed by the API is `Account` — a Stripe v2 `v2.core.account` reproduction (`AccountAggregate`). Top-level scalars are persisted as proper Postgres columns; nested objects (`configuration`, `identity`, `defaults`, `requirements`, `future_requirements`, `metadata`) round-trip through `jsonb` columns as raw JSON strings, surfaced as `JsonElement?` at the API boundary. Wire format is snake_case end-to-end (configured at composition root via `JsonNamingPolicy.SnakeCaseLower`).
+
 ### Key patterns
 
-- **CQRS via Mediator source generator** — commands/queries in `Application/Samples/{Operation}/`, handlers implement `ICommandHandler<,>` or `IQueryHandler<,>`. Mediator is source-generated (not reflection-based MediatR).
+- **CQRS via Mediator source generator** — commands/queries in `Application/Accounts/{Operation}/`, handlers implement `ICommandHandler<,>` or `IQueryHandler<,>`. Mediator is source-generated (not reflection-based MediatR).
 - **Result pattern** — handlers return `Result` or `Result<T>` (defined in `Domain/Common/Result.cs`). Endpoints map results to HTTP via extension methods in `Adapters.Inbound/Api/Extensions/ResultExtensions.cs`.
-- **Value objects via Vogen** — strongly-typed IDs and domain primitives (`SampleId`, `SampleName`) use `[ValueObject<T>]` with built-in validation.
-- **SmartEnum** — custom implementation in `Domain/Common/SmartEnum.cs` for enumeration classes (e.g., `SampleStatus`).
-- **Specification pattern** — `Domain/Common/Specification.cs` for composable query predicates.
+- **Value objects via Vogen** — strongly-typed IDs use `[ValueObject<T>]` with built-in validation. `AccountId` is a string-typed Vogen value object with the `acct_` prefix; the domain generates the ID inside `Account.Create()` before EF's `IdentityMap.Add` ever sees it (see PR #20 history for why this ordering matters).
+- **Specification pattern** — `Domain/Common/Specification.cs` for composable query predicates (e.g., `AccountByIdSpec`).
 - **Domain events** — entities extend `HasDomainEventsBase`, register events via `RegisterDomainEvent()`. Events are dispatched through `IDomainEventDispatcher` (implemented by `MediatorDomainEventDispatcher` in Persistence).
-- **FastEndpoints** — API endpoints (not controllers). Each endpoint is a class in `Adapters.Inbound/Api/Samples/` with `Configure()` + `ExecuteAsync()`. Validators use FluentValidation via FastEndpoints' `Validator<T>`.
+- **FastEndpoints** — API endpoints (not controllers). Each endpoint is a class in `Adapters.Inbound/Api/Accounts/` with `Configure()` + `ExecuteAsync()`. Validators use FluentValidation via FastEndpoints' `Validator<T>`.
 - **Scrutor** for auto-registration — adapter implementations matching `*Service`, `*Repository`, `*Publisher`, `*Client` suffix are auto-registered. Explicit registrations take precedence (`RegistrationStrategy.Skip`).
+- **Partial-update semantics** — Stripe's POST /v2/core/accounts/{id} treats absent keys as "leave alone". Reproduced via `JsonElement` request fields (`Undefined` = omitted, `Null` = clear, value = set), collapsed into `(bool HasValue, T? Value)` tuples by the inbound layer before reaching the aggregate's `ApplyUpdate`.
 
 ### Ports (interfaces in Domain)
 
-Outbound ports live in `Domain/Ports/Outbound/`: `IRepository<T>`, `IReadRepository<T>`, `IEventPublisher`, `ICacheService`, `IExternalApiClient`, `ISampleReadModelRepository`. Application can also define query-specific ports (e.g., `IListSamplesQueryService`).
+Outbound ports live in `Domain/Ports/Outbound/`: `IRepository<T>`, `IReadRepository<T>`, `IEventPublisher`, `ICacheService`, `IExternalApiClient`. Application defines query-specific ports next to their queries (e.g., `Application/Accounts/List/IListAccountsQueryService.cs`).
 
 ### Adapter implementations
 
-- **Persistence**: EF Core (PostgreSQL) for writes, Dapper for reads, MongoDB for read models, Redis for caching.
+- **Persistence**: EF Core (PostgreSQL) for writes — including `jsonb` columns for nested Stripe-shaped objects (requires `NpgsqlDataSourceBuilder.EnableDynamicJson()`, set in `PostgreSqlServiceExtensions`). MongoDB and Redis are optional sidecars wired through the feature selector.
 - **Outbound**: Kafka producer, resilient HTTP client (via `Microsoft.Extensions.Http.Resilience`).
 - **Inbound**: FastEndpoints (HTTP), Kafka consumer (`BackgroundService`).
 

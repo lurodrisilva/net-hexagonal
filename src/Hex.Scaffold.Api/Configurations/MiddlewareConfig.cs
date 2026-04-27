@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Scalar.AspNetCore;
@@ -28,6 +29,16 @@ public static class MiddlewareConfig
     app.UseFastEndpoints(c =>
     {
       c.Errors.UseProblemDetails();
+      // Stripe v2 wire format is snake_case end-to-end. Setting the
+      // serializer policy here means C# PascalCase property names on
+      // AccountDto / Create/UpdateAccountRequest / AccountListResult map
+      // onto `applied_configurations`, `contact_email`, `display_name`,
+      // `starting_after`, `has_more`, etc. without [JsonPropertyName]
+      // decorations. Affects request binding too — incoming
+      // `applied_configurations` deserializes onto the C#
+      // AppliedConfigurations property.
+      c.Serializer.Options.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+      c.Serializer.Options.DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower;
     });
 
     if (app.Environment.IsDevelopment())

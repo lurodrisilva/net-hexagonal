@@ -5,13 +5,13 @@ namespace Hex.Scaffold.Tests.Architecture;
 public class HexagonalDependencyTests
 {
   private static readonly Assembly DomainAssembly =
-    typeof(Hex.Scaffold.Domain.SampleAggregate.Sample).Assembly;
+    typeof(Hex.Scaffold.Domain.AccountAggregate.Account).Assembly;
 
   private static readonly Assembly ApplicationAssembly =
-    typeof(Hex.Scaffold.Application.Samples.SampleDto).Assembly;
+    typeof(Hex.Scaffold.Application.Accounts.AccountDto).Assembly;
 
   private static readonly Assembly InboundAssembly =
-    typeof(Hex.Scaffold.Adapters.Inbound.Api.Samples.Create).Assembly;
+    typeof(Hex.Scaffold.Adapters.Inbound.Api.Accounts.CreateAccount).Assembly;
 
   private static readonly Assembly OutboundAssembly =
     typeof(Hex.Scaffold.Adapters.Outbound.Messaging.KafkaEventPublisher).Assembly;
@@ -118,10 +118,12 @@ public class HexagonalDependencyTests
   [Trait("Category", "Architecture")]
   public void DomainEntities_ShouldHaveOnlyPrivateSetters()
   {
-    // Check only properties declared on Sample itself (not inherited EntityBase members
-    // like Id which may have a public setter for ORM purposes).
-    var sampleType = typeof(Hex.Scaffold.Domain.SampleAggregate.Sample);
-    var publicSetters = sampleType
+    // Check only properties declared on Account itself (not inherited
+    // EntityBase members like Id which has a public setter for ORM
+    // rehydration). All Account state mutations go through ApplyUpdate /
+    // Close / Create — declared properties must not have public setters.
+    var accountType = typeof(Hex.Scaffold.Domain.AccountAggregate.Account);
+    var publicSetters = accountType
       .GetProperties(System.Reflection.BindingFlags.DeclaredOnly
         | System.Reflection.BindingFlags.Public
         | System.Reflection.BindingFlags.Instance)
@@ -130,6 +132,6 @@ public class HexagonalDependencyTests
       .ToList();
 
     publicSetters.ShouldBeEmpty(
-      $"Sample entity has public setters: {string.Join(", ", publicSetters)}");
+      $"Account entity has public setters: {string.Join(", ", publicSetters)}");
   }
 }

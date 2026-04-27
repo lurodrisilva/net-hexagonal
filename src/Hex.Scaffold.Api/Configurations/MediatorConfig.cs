@@ -1,8 +1,8 @@
-using Hex.Scaffold.Adapters.Inbound.Api.Samples;
+using Hex.Scaffold.Adapters.Inbound.Api.Accounts;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
+using Hex.Scaffold.Application.Accounts.Create;
 using Hex.Scaffold.Application.Behaviors;
-using Hex.Scaffold.Application.Samples.Create;
-using Hex.Scaffold.Domain.SampleAggregate;
+using Hex.Scaffold.Domain.AccountAggregate;
 
 namespace Hex.Scaffold.Api.Configurations;
 
@@ -17,10 +17,10 @@ public static class MediatorConfig
       options.ServiceLifetime = ServiceLifetime.Scoped;
       options.Assemblies =
       [
-        typeof(Sample).Assembly,               // Domain
-        typeof(CreateSampleCommand).Assembly,  // Application
-        typeof(AppDbContext).Assembly,         // Adapters.Persistence
-        typeof(Create).Assembly,               // Adapters.Inbound
+        typeof(Account).Assembly,                // Domain
+        typeof(CreateAccountCommand).Assembly,   // Application
+        typeof(AppDbContext).Assembly,           // Adapters.Persistence
+        typeof(CreateAccount).Assembly,          // Adapters.Inbound
       ];
       options.PipelineBehaviors =
       [

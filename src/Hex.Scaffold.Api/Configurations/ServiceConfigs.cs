@@ -80,7 +80,7 @@ public static class ServiceConfigs
     }
     else
     {
-      // SampleEventPublishHandler injects IEventPublisher unconditionally.
+      // AccountEventPublishHandler injects IEventPublisher unconditionally.
       // Register a no-op fallback BEFORE the Scrutor scan below so its
       // RegistrationStrategy.Skip keeps KafkaEventPublisher (matched by
       // the *Publisher suffix filter) from filling the port and then
@@ -103,7 +103,7 @@ public static class ServiceConfigs
         };
         return new ConsumerBuilder<string, string>(config).Build();
       });
-      services.AddHostedService<SampleEventConsumer>();
+      services.AddHostedService<AccountEventConsumer>();
     }
 
     // HTTP Resilient Client — always available because outbound REST maps to
