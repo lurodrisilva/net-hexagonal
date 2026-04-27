@@ -93,11 +93,11 @@ wiremock:
     port: 8080
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 30m
+      memory: 96Mi
     limits:
-      cpu: 500m
-      memory: 256Mi
+      cpu: 100m
+      memory: 192Mi
   # Global response delay (milliseconds) injected into every stub's response
   # at render time. Lets the application's HttpClient resilience pipeline
   # observe a realistic latency without per-stub bookkeeping.
