@@ -1,4 +1,5 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Hex.Scaffold.Domain.Common;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -66,6 +67,10 @@ public static class ObservabilityConfig
           .AddHttpClientInstrumentation()
           // EF Core / Dapper -> Postgres dependency edges.
           .AddSource(NpgsqlActivitySource)
+          // Kafka producer + consumer spans (Confluent.Kafka has no first-party
+          // OTel package; KafkaEventPublisher and SampleEventConsumer emit
+          // spans manually using this shared ActivitySource).
+          .AddSource(KafkaTelemetry.SourceName)
           .AddOtlpExporter(opts =>
           {
             opts.Endpoint = new Uri(otlpEndpoint);
@@ -115,6 +120,36 @@ public static class ObservabilityConfig
         logging.AddAzureMonitorLogExporter(o => o.ConnectionString = appInsightsConnectionString);
       }
     });
+
+    // Live Metrics (QuickPulse) — the Azure.Monitor.OpenTelemetry.Exporter
+    // package does NOT support Live Metrics; that channel is Distro-only.
+    // We register only the QuickPulseTelemetryModule from the classic AI SDK
+    // so the Live Metrics blade in the portal lights up without dragging the
+    // rest of the classic AI request/dependency collectors into the pipeline.
+    // The OTel pipeline above remains the single source of regular ingest;
+    // QuickPulse here is purely a 1-second control channel to
+    // <region>.livediagnostics.monitor.azure.com (URL derived from the
+    // LiveEndpoint key in APPLICATIONINSIGHTS_CONNECTION_STRING).
+    if (azureMonitorEnabled)
+    {
+      // AddApplicationInsightsTelemetry registers the full classic AI pipeline,
+      // including QuickPulseTelemetryModule (the Live Metrics control channel
+      // that the OTel exporter cannot provide). The classic AI request /
+      // dependency / exception collectors it also registers would normally
+      // double-emit alongside our OTel pipeline; we silence them below so the
+      // ONLY thing the classic SDK contributes is QuickPulse.
+      builder.Services.AddApplicationInsightsTelemetry(o =>
+      {
+        o.ConnectionString = appInsightsConnectionString;
+        o.EnableRequestTrackingTelemetryModule = false;
+        o.EnableDependencyTrackingTelemetryModule = false;
+        o.EnablePerformanceCounterCollectionModule = false;
+        o.EnableEventCounterCollectionModule = false;
+        o.EnableAppServicesHeartbeatTelemetryModule = false;
+        o.EnableAzureInstanceMetadataTelemetryModule = false;
+        o.EnableHeartbeat = false;
+      });
+    }
 
     return builder;
   }
