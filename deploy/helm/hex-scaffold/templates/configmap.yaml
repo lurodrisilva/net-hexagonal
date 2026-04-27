@@ -35,6 +35,12 @@ data:
   # --- OpenTelemetry OTLP endpoint (always on) -----------------------------
   OpenTelemetry__OtlpEndpoint: {{ .Values.observability.otlp.endpoint | quote }}
 
+  # service.namespace resource attribute. Used by the Application Insights
+  # Cloud-role-name derivation so multi-service workspaces don't collapse to
+  # one node on the App Map. service.instance.id is set per-pod via the
+  # downward API in the Deployment template (OTEL_SERVICE_INSTANCE_ID env).
+  OpenTelemetry__ServiceNamespace: {{ .Values.observability.serviceNamespace | quote }}
+
   # --- External REST API (outbound HTTP adapter) ---------------------------
   # Resolved via the hex-scaffold.externalApiBaseUrl helper: in-cluster
   # WireMock when wiremock.enabled, otherwise secrets.externalApiBaseUrl.

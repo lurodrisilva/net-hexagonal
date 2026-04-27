@@ -56,10 +56,19 @@ spec:
                 name: {{ include "hex-scaffold.fullname" . }}
             - secretRef:
                 name: {{ include "hex-scaffold.fullname" . }}
-          {{- with .Values.env }}
           env:
+            # Per-pod App Insights "Cloud role instance" — pulled from the
+            # downward API so each replica is distinguishable on the
+            # Application Map. The .NET app reads this in
+            # ObservabilityConfig.cs and stamps it as the OTel
+            # `service.instance.id` resource attribute.
+            - name: OTEL_SERVICE_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
