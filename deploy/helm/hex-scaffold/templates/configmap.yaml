@@ -48,3 +48,8 @@ data:
 
   # --- Kafka consumer group (producer bootstrap is in the Secret) ----------
   Kafka__ConsumerGroupId:   {{ .Values.secrets.kafkaConsumerGroupId | quote }}
+
+  # --- Rate limiter (fixed window, per-IP) ----------------------------------
+  RateLimit__PermitLimit:    {{ .Values.rateLimit.permitLimit    | quote }}
+  RateLimit__WindowSeconds:  {{ .Values.rateLimit.windowSeconds  | quote }}
+  RateLimit__QueueLimit:     {{ .Values.rateLimit.queueLimit     | quote }}

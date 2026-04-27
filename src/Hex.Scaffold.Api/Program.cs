@@ -15,7 +15,7 @@ var startupLogger = loggerFactory.CreateLogger<Program>();
 builder.Services.AddProblemDetails();
 builder.Services.AddServiceConfigs(builder.Configuration, startupLogger);
 builder.Services.AddHealthCheckServices(builder.Configuration);
-builder.Services.AddRateLimitingServices();
+builder.Services.AddRateLimitingServices(builder.Configuration);
 
 // API
 builder.Services.AddFastEndpoints()

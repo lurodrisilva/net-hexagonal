@@ -16,6 +16,15 @@
  *   BASE_URL   (default http://hex-scaffold.default.svc:80)
  *   VUS        (override default ramping profile with a flat VU count)
  *   DURATION   (used together with VUS for a flat profile)
+ *
+ * Rate limiter coupling
+ *   The API ships with a per-IP fixed-window limiter (RateLimitOptions).
+ *   The default chart cap is 100 req/min/IP; the ramped profile below
+ *   peaks at 150 req/s, so unless `rateLimit.permitLimit` is bumped well
+ *   above the test's arrival rate the runners will be 429-throttled. 429s
+ *   are tracked in `golden_throttled_rate` separately from real errors so
+ *   a working limiter doesn't masquerade as a system fault — see
+ *   classifyResponse below.
  */
 
 import http from "k6/http";
@@ -33,7 +42,35 @@ const latencyUpdate = new Trend("golden_latency_update_ms", true);
 const latencyDelete = new Trend("golden_latency_delete_ms", true);
 const trafficRps    = new Counter("golden_traffic_total_requests");
 const errorsRate    = new Rate("golden_errors_rate");
+// Track 429s separately. A working rate limiter under load *should* reject
+// excess traffic — counting that as an error makes the test report the
+// limiter as a system fault rather than as expected backpressure. Real
+// errors are 5xx and unexpected 4xx (NOT 429); see classifyResponse.
+const throttledRate = new Rate("golden_throttled_rate");
 const saturation    = new Trend("golden_saturation_concurrent_vus");
+
+// safeJson — the response body is text on non-2xx and on transport errors.
+// k6's res.json() throws in those cases, taking the whole iteration with it
+// when the same status check would have flagged the failure cleanly.
+function safeJson(res) {
+  try { return res.json(); } catch (_) { return null; }
+}
+
+// classifyResponse — drive errorsRate and throttledRate from one source of
+// truth so the per-call site doesn't have to remember whether 429 counts as
+// an error this week. Returns { ok, throttled } so the caller can decide
+// whether to continue the iteration (e.g. skip GET/PUT/DELETE on 429-Create).
+function classifyResponse(res, expectedStatus) {
+  const status = res.status | 0;
+  const throttled = status === 429;
+  const ok = Array.isArray(expectedStatus)
+    ? expectedStatus.includes(status)
+    : status === expectedStatus;
+  // Anything that's neither the happy path nor a throttle is a real error.
+  throttledRate.add(throttled);
+  errorsRate.add(!ok && !throttled);
+  return { ok, throttled };
+}
 
 // ---------------------------------------------------------------------------
 export const options = (() => {
@@ -87,9 +124,16 @@ function thresholds() {
     "http_req_duration{name:list}":         ["p(95)<300", "p(99)<600"],
     "http_req_duration{name:update}":       ["p(95)<400", "p(99)<800"],
     "http_req_duration{name:delete}":       ["p(95)<400", "p(99)<800"],
-    // Errors — golden signal 3
-    "http_req_failed":                      ["rate<0.01"],  // <1% non-2xx
-    "golden_errors_rate":                   ["rate<0.01"],
+    // Errors — golden signal 3. golden_errors_rate excludes 429 by design
+    // (see classifyResponse) so this gate fires on real failures only;
+    // http_req_failed is a coarse k6-native sanity check that does count
+    // 429s, so we leave it slightly looser to allow incidental throttling.
+    "http_req_failed":                      ["rate<0.05"],  // <5% non-2xx (incl. throttling)
+    "golden_errors_rate":                   ["rate<0.01"],  // <1% non-2xx, non-429
+    // Throttling — informational gate. >50% throttled means the run never
+    // got past the limiter and the latency/error numbers can't be trusted.
+    // Bump rateLimit.permitLimit in the chart and rerun.
+    "golden_throttled_rate":                ["rate<0.50"],
     // Traffic — golden signal 2 (informational; assert minimum volume reached)
     "golden_traffic_total_requests":        ["count>500"],
     // Saturation — golden signal 4 (VU utilization ceiling)
@@ -120,19 +164,21 @@ export function crudFlow() {
     });
     latencyCreate.add(Date.now() - t0);
     trafficRps.add(1);
-    const ok = check(res, {
-      "POST /samples status 201": (r) => r.status === 201,
-      "POST /samples returns Id": (r) => {
-        try { return typeof r.json().id === "number" || typeof r.json().Id === "number"; }
-        catch (_) { return false; }
+    const verdict = classifyResponse(res, 201);
+    check(res, {
+      "POST /samples status 201 or 429": (r) => r.status === 201 || r.status === 429,
+      "POST /samples returns Id when 201": (r) => {
+        if (r.status !== 201) return true; // not applicable
+        const j = safeJson(r);
+        return j !== null && (typeof j.id === "number" || typeof j.Id === "number");
       },
     });
-    errorsRate.add(!ok);
-    if (ok) {
-      const body = res.json();
-      createdId = body.id ?? body.Id;
+    if (verdict.ok) {
+      const body = safeJson(res);
+      createdId = body?.id ?? body?.Id ?? null;
     }
   });
+  // Either Create errored or was throttled; nothing to GET/PUT/DELETE.
   if (!createdId) return;
 
   sleep(randomIntBetween(0, 1));
@@ -142,16 +188,17 @@ export function crudFlow() {
     const res = http.get(`${BASE_URL}/samples/${createdId}`, { tags: { name: "get" } });
     latencyRead.add(Date.now() - t0);
     trafficRps.add(1);
-    const ok = check(res, {
-      "GET /samples/:id status 200":   (r) => r.status === 200,
+    classifyResponse(res, 200);
+    if (res.status === 200) {
       // SampleRecord shape: {id, name, status, description}. Catches an
       // accidental contract regression (e.g., a Sample-aggregate refactor
       // breaking EF rehydration or the inbound DTO mapper).
-      "GET /samples/:id matches id":   (r) => safeJson(r)?.id === createdId,
-      "GET /samples/:id has name":     (r) => typeof safeJson(r)?.name === "string",
-      "GET /samples/:id has status":   (r) => typeof safeJson(r)?.status === "string",
-    });
-    errorsRate.add(!ok);
+      check(res, {
+        "GET /samples/:id matches id": (r) => safeJson(r)?.id === createdId,
+        "GET /samples/:id has name":   (r) => typeof safeJson(r)?.name === "string",
+        "GET /samples/:id has status": (r) => typeof safeJson(r)?.status === "string",
+      });
+    }
   });
 
   group("update", () => {
@@ -170,12 +217,13 @@ export function crudFlow() {
     });
     latencyUpdate.add(Date.now() - t0);
     trafficRps.add(1);
-    const ok = check(res, {
-      "PUT /samples/:id status 200":   (r) => r.status === 200,
-      "PUT /samples/:id matches id":   (r) => safeJson(r)?.id === createdId,
-      "PUT /samples/:id name updated": (r) => (safeJson(r)?.name ?? "").startsWith("k6-updated-"),
-    });
-    errorsRate.add(!ok);
+    classifyResponse(res, 200);
+    if (res.status === 200) {
+      check(res, {
+        "PUT /samples/:id matches id":   (r) => safeJson(r)?.id === createdId,
+        "PUT /samples/:id name updated": (r) => (safeJson(r)?.name ?? "").startsWith("k6-updated-"),
+      });
+    }
   });
 
   group("delete", () => {
@@ -185,18 +233,8 @@ export function crudFlow() {
     });
     latencyDelete.add(Date.now() - t0);
     trafficRps.add(1);
-    const ok = check(res, {
-      "DELETE /samples/:id status 204": (r) => r.status === 204,
-    });
-    errorsRate.add(!ok);
+    classifyResponse(res, 204);
   });
-}
-
-// safeJson — the response body is text on non-2xx and on transport errors.
-// k6's res.json() throws in those cases, taking the whole iteration with it
-// when the same status check would have flagged the failure cleanly.
-function safeJson(res) {
-  try { return res.json(); } catch (_) { return null; }
 }
 
 // Read-heavy scenario: keeps LIST hot to exercise the cache & query path.
@@ -205,14 +243,15 @@ export function listOnly() {
   const res = http.get(`${BASE_URL}/samples`, { tags: { name: "list" } });
   latencyList.add(res.timings.duration);
   trafficRps.add(1);
-  const ok = check(res, {
-    "GET /samples status 200":      (r) => r.status === 200,
+  classifyResponse(res, 200);
+  if (res.status === 200) {
     // PagedResult shape: {items[], page, perPage, totalCount, totalPages}.
-    "GET /samples is paged result": (r) => Array.isArray(safeJson(r)?.items),
-    "GET /samples has page meta":   (r) => typeof safeJson(r)?.page === "number"
-                                        && typeof safeJson(r)?.totalPages === "number",
-  });
-  errorsRate.add(!ok);
+    check(res, {
+      "GET /samples is paged result": (r) => Array.isArray(safeJson(r)?.items),
+      "GET /samples has page meta":   (r) => typeof safeJson(r)?.page === "number"
+                                          && typeof safeJson(r)?.totalPages === "number",
+    });
+  }
 }
 
 // handleSummary is emitted at end-of-run. In the k6-operator flow this is
@@ -226,11 +265,22 @@ export function handleSummary(data) {
 
 function textSummary(data) {
   const m = data.metrics;
-  const fmt = (n, p) => (n && n.values ? (n.values[p] ?? "-").toFixed(2) : "n/a");
+  // Guard against missing metric / missing percentile. Calling .toFixed() on
+  // the "-" fallback string raised a TypeError in the original implementation
+  // and crashed handleSummary right after the threshold report.
+  const fmt = (n, p) => {
+    const v = n && n.values ? n.values[p] : undefined;
+    return typeof v === "number" ? v.toFixed(2) : "n/a";
+  };
+  const ratePct = (n) => (n && n.values && typeof n.values.rate === "number"
+    ? (n.values.rate * 100).toFixed(2) + "%"
+    : "n/a");
   return `
 ======== hex-scaffold REST load-test summary ========
 Requests:                ${m.http_reqs?.values?.count ?? "n/a"}
-Error rate:              ${(m.http_req_failed?.values?.rate ?? 0).toFixed(4)}
+Error rate (5xx/4xx):    ${ratePct(m.golden_errors_rate)}
+Throttled rate (429):    ${ratePct(m.golden_throttled_rate)}
+http_req_failed (k6):    ${ratePct(m.http_req_failed)}
 
 Latency (ms)             p50        p95        p99
   create                 ${fmt(m["http_req_duration{name:create}"], "p(50)")}     ${fmt(m["http_req_duration{name:create}"], "p(95)")}     ${fmt(m["http_req_duration{name:create}"], "p(99)")}

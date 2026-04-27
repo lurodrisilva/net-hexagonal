@@ -62,6 +62,17 @@ application:
   # ASPNETCORE_ENVIRONMENT
   environment: Production
 
+# -- Rate limiter — fixed-window limiter applied per-IP (also as the global
+#    limiter). Tune for the workload: the defaults below mirror the original
+#    hardcoded scaffold values (100 req / 60 s) which are intentionally
+#    conservative for a demo. Bump well above the test arrival rate before
+#    running the k6 load test (e.g. permitLimit: 100000) — otherwise the
+#    runner pods will be 429-throttled and `http_req_failed` will explode.
+rateLimit:
+  permitLimit: 100
+  windowSeconds: 60
+  queueLimit: 0
+
 # -- WireMock — in-cluster HTTP API mock used by the outbound REST adapter
 #    (IExternalApiClient). When enabled, ExternalApi__BaseUrl is rewritten to
 #    point at the WireMock service so the app hits a deterministic mock with
