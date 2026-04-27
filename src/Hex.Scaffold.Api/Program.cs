@@ -24,8 +24,8 @@ builder.Services.AddFastEndpoints()
     o.DocumentSettings = s =>
     {
       s.Title = "Hex.Scaffold API";
-      s.Version = "v1";
-      s.Description = "Canonical hexagonal architecture microservice scaffold for Azure AKS.";
+      s.Version = "v2";
+      s.Description = "Stripe v2 Accounts API surface (Create / Retrieve / Update / List).";
     };
     o.ShortSchemaNames = true;
   });
