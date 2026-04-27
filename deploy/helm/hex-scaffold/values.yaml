@@ -201,12 +201,15 @@ tolerations: []
 affinity: {}
 
 # -- OpenTelemetry / Azure Monitor.
-#    The application already carries the Azure Monitor OTel exporter; setting
-#    appInsightsConnectionString above (via Secret) activates ingest. These
-#    knobs tune the OTLP side (e.g. when running a local collector).
+#    The application ships telemetry to Application Insights via the
+#    `Azure.Monitor.OpenTelemetry.Exporter` ingest path (activated when
+#    secrets.appInsightsConnectionString is non-empty). The previous OTLP
+#    exporter that POSTed to a co-located OTel collector has been removed
+#    — see fix/drop-otlp-exporter-faulted-deps in the changelog — so the
+#    `observability.otlp.*` block is gone. If you need to ship to a side-
+#    car collector again, re-add it here AND wire the OTLP exporter back
+#    into ObservabilityConfig.cs alongside the AzureMonitor exporters.
 observability:
-  otlp:
-    endpoint: "http://otel-collector.observability.svc:4318"
   # OpenTelemetry `service.namespace` resource attribute. Application Insights
   # derives the Cloud-role-name on the App Map as `<namespace>.<service.name>`
   # — leaving this empty collapses every service in the workspace to a single
