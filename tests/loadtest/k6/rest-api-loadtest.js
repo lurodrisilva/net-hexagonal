@@ -1,7 +1,7 @@
 /*
  * hex-scaffold — REST API load test
  *
- * Exercises the full Sample CRUD surface (POST/GET/LIST/PATCH/DELETE) with a
+ * Exercises the full Sample CRUD surface (POST/GET/LIST/PUT/DELETE) with a
  * ramped VU profile that models: warmup -> steady state -> peak -> drain.
  *
  * Custom metrics map onto the four golden signals (latency/traffic/errors/
@@ -98,7 +98,7 @@ function thresholds() {
 }
 
 // ---------------------------------------------------------------------------
-// CRUD flow: POST -> GET -> PATCH -> DELETE, verifying each step.
+// CRUD flow: POST -> GET -> PUT -> DELETE, verifying each step.
 export function crudFlow() {
   saturation.add(__VU);
 
@@ -143,16 +143,25 @@ export function crudFlow() {
     latencyRead.add(Date.now() - t0);
     trafficRps.add(1);
     const ok = check(res, {
-      "GET /samples/:id status 200": (r) => r.status === 200,
+      "GET /samples/:id status 200":   (r) => r.status === 200,
+      // SampleRecord shape: {id, name, status, description}. Catches an
+      // accidental contract regression (e.g., a Sample-aggregate refactor
+      // breaking EF rehydration or the inbound DTO mapper).
+      "GET /samples/:id matches id":   (r) => safeJson(r)?.id === createdId,
+      "GET /samples/:id has name":     (r) => typeof safeJson(r)?.name === "string",
+      "GET /samples/:id has status":   (r) => typeof safeJson(r)?.status === "string",
     });
     errorsRate.add(!ok);
   });
 
   group("update", () => {
+    // UpdateSampleRequest only accepts {Name, Description}. There is no
+    // Status field on the inbound DTO — Activate/Deactivate are domain
+    // operations not exposed as endpoints — so sending Status here would
+    // be a no-op silently dropped by System.Text.Json.
     const body = JSON.stringify({
       Name:        `k6-updated-${__VU}-${randomString(6)}`,
       Description: "Updated by k6 load test",
-      Status:      "Active",
     });
     const t0 = Date.now();
     const res = http.put(`${BASE_URL}/samples/${createdId}`, body, {
@@ -162,7 +171,9 @@ export function crudFlow() {
     latencyUpdate.add(Date.now() - t0);
     trafficRps.add(1);
     const ok = check(res, {
-      "PUT /samples/:id status 2xx": (r) => r.status >= 200 && r.status < 300,
+      "PUT /samples/:id status 200":   (r) => r.status === 200,
+      "PUT /samples/:id matches id":   (r) => safeJson(r)?.id === createdId,
+      "PUT /samples/:id name updated": (r) => (safeJson(r)?.name ?? "").startsWith("k6-updated-"),
     });
     errorsRate.add(!ok);
   });
@@ -175,10 +186,17 @@ export function crudFlow() {
     latencyDelete.add(Date.now() - t0);
     trafficRps.add(1);
     const ok = check(res, {
-      "DELETE /samples/:id status 2xx": (r) => r.status >= 200 && r.status < 300,
+      "DELETE /samples/:id status 204": (r) => r.status === 204,
     });
     errorsRate.add(!ok);
   });
+}
+
+// safeJson — the response body is text on non-2xx and on transport errors.
+// k6's res.json() throws in those cases, taking the whole iteration with it
+// when the same status check would have flagged the failure cleanly.
+function safeJson(res) {
+  try { return res.json(); } catch (_) { return null; }
 }
 
 // Read-heavy scenario: keeps LIST hot to exercise the cache & query path.
@@ -188,7 +206,11 @@ export function listOnly() {
   latencyList.add(res.timings.duration);
   trafficRps.add(1);
   const ok = check(res, {
-    "GET /samples status 200": (r) => r.status === 200,
+    "GET /samples status 200":      (r) => r.status === 200,
+    // PagedResult shape: {items[], page, perPage, totalCount, totalPages}.
+    "GET /samples is paged result": (r) => Array.isArray(safeJson(r)?.items),
+    "GET /samples has page meta":   (r) => typeof safeJson(r)?.page === "number"
+                                        && typeof safeJson(r)?.totalPages === "number",
   });
   errorsRate.add(!ok);
 }
