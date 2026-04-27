@@ -8,7 +8,7 @@ This page is for getting the scaffold running locally and for day-to-day work on
 |---|---|
 | .NET SDK | 10.0.100 (see [`global.json`](../global.json) — `rollForward: latestMajor`, prerelease allowed) |
 | Docker | Any recent version (needed for integration tests and local infra) |
-| `dotnet-ef` | Matching EF Core 10 (`dotnet tool install --global dotnet-ef --version 10.*`) |
+| `dotnet-ef` | Pinned in [`.config/dotnet-tools.json`](../.config/dotnet-tools.json) — run `dotnet tool restore` once and the local tool is available repo-wide |
 
 ## Infrastructure
 
@@ -90,7 +90,7 @@ dotnet ef migrations remove \
   --startup-project src/Hex.Scaffold.Api
 ```
 
-The existing initial migration is [`20260411200621_InitialCreate`](../src/Hex.Scaffold.Adapters.Persistence/PostgreSql/Migrations/20260411200621_InitialCreate.cs).
+The current `InitialCreate` migration creates the `accounts` table — see [`PostgreSql/Migrations/`](../src/Hex.Scaffold.Adapters.Persistence/PostgreSql/Migrations) for the timestamped file. snake_case column names; `applied_configurations` is a Postgres `text[]`; `configuration` / `identity` / `defaults` / `requirements` / `future_requirements` / `metadata` are `jsonb`.
 
 ## Adding a new use case
 
@@ -144,11 +144,12 @@ docker run --rm -p 8080:8080 \
 |---|---|
 | App fails at startup with Npgsql error | PostgreSQL not running, or connection string wrong. Check `/ready`. |
 | Readiness returns `Degraded` | Kafka unreachable — soft dep, app will still serve HTTP. |
-| `404` on `/samples/{id}` after POST | Cache wasn't invalidated — indicates a bug in `SampleEventPublishHandler`, or the event was swallowed by Kafka publish failure. Check logs for `Failed to publish`. |
+| `404` on `/v2/core/accounts/{id}` after POST | Cache wasn't invalidated — indicates a bug in `AccountEventPublishHandler`, or the event was swallowed by Kafka publish failure. Check logs for `Failed to publish`. |
 | Integration tests hang | Docker not running. |
 | Architecture tests failing | A new `using` crossed a boundary. Check the failing type name in the assertion message. |
 | EF migrations not applied in Dev | `Database:ApplyMigrationsOnStartup` must be `true` (default in `appsettings.Development.json`). |
-| `ValueObjectValidationException` at boundary | Input failed a Vogen validator. Make sure validation runs before `SampleId.From(...)` / `SampleName.From(...)`. |
+| `ValueObjectValidationException` at boundary | Input failed a Vogen validator. `AccountId.From(...)` rejects strings that don't start with `acct_`; the inbound validators check that before the handler runs. |
+| `Npgsql … is not jsonb-compatible` at write time | The `NpgsqlDataSource` was built without `EnableDynamicJson()`. See [`PostgreSqlServiceExtensions.cs`](../src/Hex.Scaffold.Adapters.Persistence/Extensions/PostgreSqlServiceExtensions.cs) — required for the `string` ↔ `jsonb` round-trip on the Account aggregate's nested-blob columns. |
 
 ## CLAUDE.md
 

@@ -1,6 +1,8 @@
 # HTTP API
 
-The API is exposed via FastEndpoints. All endpoints live under [`Adapters.Inbound/Api/Samples/`](../src/Hex.Scaffold.Adapters.Inbound/Api/Samples).
+The API is exposed via FastEndpoints. All endpoints live under [`Adapters.Inbound/Api/Accounts/`](../src/Hex.Scaffold.Adapters.Inbound/Api/Accounts).
+
+The wire format is **snake_case end-to-end** — the FastEndpoints serializer is configured in [`MiddlewareConfig.cs`](../src/Hex.Scaffold.Api/Configurations/MiddlewareConfig.cs) with `JsonNamingPolicy.SnakeCaseLower`, so C# PascalCase property names map to `applied_configurations`, `contact_email`, `display_name`, `has_more`, `starting_after`, etc. without any `[JsonPropertyName]` decoration.
 
 Base URL in development: `http://localhost:8080`.
 
@@ -13,126 +15,147 @@ Interactive docs:
 
 | Method | Path | Summary |
 |---|---|---|
-| `POST` | `/samples` | Create a new sample |
-| `GET` | `/samples` | List samples (paginated) |
-| `GET` | `/samples/{sampleId:int}` | Get a sample by ID |
-| `PUT` | `/samples/{sampleId:int}` | Update a sample |
-| `DELETE` | `/samples/{sampleId:int}` | Delete a sample |
-| `GET` | `/samples/external-info` | Proxy demo — calls the outbound HTTP adapter |
+| `POST` | `/v2/core/accounts` | Create an Account |
+| `GET` | `/v2/core/accounts` | List Accounts (cursor-paginated) |
+| `GET` | `/v2/core/accounts/{id}` | Retrieve an Account |
+| `POST` | `/v2/core/accounts/{id}` | Update an Account (partial; Stripe uses POST) |
 | `GET` | `/healthz` | Liveness probe |
 | `GET` | `/ready` | Readiness probe |
 
-All sample endpoints are `AllowAnonymous()` and tagged `Samples` in OpenAPI. Add auth in `MiddlewareConfig.cs` when ready — the `TODO` marks the spot.
+All Account endpoints are `AllowAnonymous()` and tagged `Accounts` in OpenAPI. Add auth in `MiddlewareConfig.cs` when ready — the `TODO` marks the spot.
 
-## POST /samples
+The four endpoints reproduce the **Stripe v2 Accounts API** wire shape (`object: "v2.core.account"`, `acct_…` IDs, snake_case keys, partial-update semantics for POST update). See `docs/domain.md` for the aggregate, `docs/database.md` for the Postgres schema (top-level scalars + jsonb columns for nested objects).
+
+## POST /v2/core/accounts
 
 **Request**
 
 ```json
 {
-  "name": "My Sample",
-  "description": "optional"
+  "applied_configurations": ["customer", "merchant"],
+  "contact_email": "furever@example.com",
+  "display_name": "Furever",
+  "configuration": {
+    "customer": { "applied": true },
+    "merchant": { "applied": true }
+  },
+  "identity": {
+    "country": "US",
+    "entity_type": "company",
+    "business_details": {
+      "registered_name": "Furever",
+      "address": { "country": "US", "postal_code": "10001" }
+    }
+  },
+  "metadata": { "source": "demo" }
 }
 ```
 
-Validation (`CreateSampleValidator`):
+All top-level fields are optional; nested objects (`configuration`, `identity`, `defaults`, `metadata`) are stored as JSON in Postgres `jsonb` columns and round-tripped verbatim on read.
 
-- `name` required
-- `name` max length `SampleName.MaxLength` (200)
+Validation (`CreateAccountValidator`):
 
-**Responses**
-
-| Status | Body |
-|---|---|
-| `201 Created` | `{ "id": 42, "name": "My Sample" }`, `Location: /samples/42` |
-| `400 ValidationProblem` | RFC 7807 problem with `errors` dictionary |
-| `500 Problem` | RFC 7807 problem |
-
-## GET /samples/{sampleId}
+- `display_name` ≤ 200 chars
+- `contact_email` valid email, ≤ 254 chars
+- `contact_phone` ≤ 40 chars
+- `applied_configurations[*]` ∈ `{customer, merchant, recipient}`
+- **`contact_email` is required when `applied_configurations` contains `merchant` or `recipient`** (mirrors Stripe's docs)
 
 **Responses**
 
 | Status | Body |
 |---|---|
-| `200 Ok` | `SampleRecord` |
+| `200 OK` | Full `Account` object (Stripe-faithful — Stripe doesn't return 201) |
+| `400 ValidationProblem` | RFC 7807 with the failed rules in `errors` |
+| `429 Too Many Requests` | Per-IP rate limit hit |
+| `500 Problem` | RFC 7807 |
+
+## GET /v2/core/accounts/{id}
+
+**Responses**
+
+| Status | Body |
+|---|---|
+| `200 OK` | Full `Account` object |
 | `404 NotFound` | — |
 
-`SampleRecord`:
+`Account` shape (everything Stripe v2 surfaces, minus the four endpoints out of scope):
 
 ```json
 {
-  "id": 42,
-  "name": "My Sample",
-  "status": "NotSet",
-  "description": "optional"
+  "id": "acct_AbCdEf1234567890123456",
+  "object": "v2.core.account",
+  "livemode": false,
+  "created": "2026-04-27T13:00:00.000Z",
+  "display_name": "Furever",
+  "contact_email": "furever@example.com",
+  "dashboard": "full",
+  "applied_configurations": ["customer", "merchant"],
+  "configuration": { /* whatever was sent on create/update */ },
+  "identity": { /* … */ },
+  "defaults": null,
+  "metadata": { /* … */ }
 }
 ```
 
-`status` is the SmartEnum name (`Active` \| `Inactive` \| `NotSet`).
+`dashboard` is derived from `applied_configurations` — `merchant` or `customer` → `full`, `recipient` only → `express`, none → `none`. The handler reads through Redis first (5-minute TTL) and falls back to Postgres; cache invalidation runs through `AccountEventPublishHandler` on `AccountUpdatedEvent`.
 
-The handler uses `ICacheService` — it reads from Redis first (5-minute TTL) and falls back to the database.
+## GET /v2/core/accounts
 
-## GET /samples
+**Query** — cursor-based, mirrors Stripe:
 
-**Query**
+| Param | Type | Default | Range |
+|---|---|---|---|
+| `limit` | int | `10` | `1..100` |
+| `starting_after` | string (`acct_…`) | — | forward cursor |
+| `ending_before` | string (`acct_…`) | — | backward cursor |
 
-| Param | Type | Default |
+`starting_after` and `ending_before` are mutually exclusive (400 if both are sent).
+
+**Response** — `200 OK`
+
+```json
+{
+  "object": "list",
+  "data": [ /* up to `limit` Account objects, newest-first */ ],
+  "has_more": true
+}
+```
+
+Pagination is keyset-on-`created` only — the (created, id) tiebreaker was dropped because composite-key comparisons across a Vogen-typed PK don't translate cleanly to SQL. Acceptable trade-off for a scaffold demo. Backed by [`ListAccountsQueryService`](../src/Hex.Scaffold.Adapters.Persistence/PostgreSql/Queries/ListAccountsQueryService.cs) (EF, `AsNoTracking`).
+
+## POST /v2/core/accounts/{id}
+
+**Request** — Stripe-style partial update. **Every field is optional**, and the API distinguishes three states per field:
+
+| Caller intent | JSON shape | Effect |
 |---|---|---|
-| `page` | int | `1` |
-| `perPage` | int | `10` (`Constants.DefaultPageSize`) |
+| Omitted | key not present | Leave alone |
+| Explicit null | `"display_name": null` | Clear |
+| Set | `"display_name": "Furever Inc."` | Apply |
 
-**Response** — `200 Ok`
+The endpoint binds each field as `JsonElement`; `Undefined` = omitted, `Null` = clear, anything else = set. The `(HasValue, Value?)` tuple the aggregate's `ApplyUpdate` accepts is collapsed by [`AccountFieldHelpers`](../src/Hex.Scaffold.Adapters.Inbound/Api/Accounts/AccountFieldHelpers.cs).
+
+```json
+{ "display_name": "Furever Inc." }
+```
 
 ```json
 {
-  "items": [ { "id": 1, "name": "…", "status": "…", "description": "…" } ],
-  "page": 1,
-  "perPage": 10,
-  "totalCount": 123,
-  "totalPages": 13
+  "applied_configurations": ["customer", "merchant", "recipient"],
+  "metadata": { "tier": "platinum" }
 }
 ```
 
-Backed by Dapper (`ListSamplesQueryService`), not EF.
-
-## PUT /samples/{sampleId}
-
-**Request**
-
-```json
-{ "name": "New name", "description": "new description" }
-```
-
 **Responses**
 
 | Status | Body |
 |---|---|
-| `200 Ok` | `SampleRecord` (the updated sample) |
+| `200 OK` | Full updated `Account` object |
 | `404 NotFound` | — |
-| `500 Problem` | — |
+| `400 ValidationProblem` | invalid id format / invalid email / unknown applied_configuration |
 
-Registers `SampleUpdatedEvent` when `name` actually changes. `description` is unconditionally applied (see `Sample.UpdateDescription`).
-
-## DELETE /samples/{sampleId}
-
-**Responses**
-
-| Status | Body |
-|---|---|
-| `204 NoContent` | — |
-| `404 NotFound` | — |
-
-Delegates to `DeleteSampleService` (a domain service). The domain service publishes `SampleDeletedEvent` via Mediator.
-
-## GET /samples/external-info
-
-**Query**
-
-| Param | Default |
-|---|---|
-| `endpoint` | `/get` |
-
-Calls the base URL configured in `ExternalApi:BaseUrl` (default `https://httpbin.org`) via the resilient HTTP client. Returns the response body (or an error string). Good for smoke-testing the outbound adapter.
+Registers `AccountUpdatedEvent` when at least one field actually changes (the aggregate compares old-vs-new before emitting, so `display_name = same` is a no-op).
 
 ## Error mapping
 
@@ -141,7 +164,7 @@ All inbound handlers run commands through Mediator and receive a `Result` / `Res
 ```mermaid
 flowchart LR
     R[Result<T>]
-    R -->|IsSuccess| S[TypedResults.Ok / Created / NoContent]
+    R -->|IsSuccess| S[TypedResults.Ok]
     R -->|NotFound| N[TypedResults.NotFound]
     R -->|Invalid| V[TypedResults.ValidationProblem]
     R -->|Error| P[TypedResults.Problem 500]
@@ -151,12 +174,14 @@ Unhandled exceptions go through ASP.NET's problem-details handler (`app.UseExcep
 
 ## Rate limiting
 
-A global per-IP fixed-window limiter runs in front of all endpoints:
+A global per-IP fixed-window limiter runs in front of all endpoints. The defaults match Stripe's posture for a scaffold demo, but every knob is configurable through the Helm chart's `rateLimit.*` values:
 
-- **100 requests / minute / remote IP**
-- Rejected requests return `429 Too Many Requests` (`RejectionStatusCode = 429`).
+- **`permitLimit`** = 100 requests
+- **`windowSeconds`** = 60 s
+- **`queueLimit`** = 0
+- Rejected requests return `429 Too Many Requests`.
 
-Configured in [`Api/Configurations/RateLimitingConfig.cs`](../src/Hex.Scaffold.Api/Configurations/RateLimitingConfig.cs). A named `"default"` policy is also registered for selective attachment to endpoints.
+Configured in [`Api/Configurations/RateLimitingConfig.cs`](../src/Hex.Scaffold.Api/Configurations/RateLimitingConfig.cs); options bound to the `RateLimit:*` configuration section. **Bump `permitLimit` well above the test arrival rate before running k6** — see `docs/loadtest.md`.
 
 ## Health
 

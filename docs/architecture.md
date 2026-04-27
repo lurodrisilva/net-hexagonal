@@ -76,11 +76,11 @@ flowchart LR
 
 | Project | Role |
 |---|---|
-| [`Hex.Scaffold.Domain`](../src/Hex.Scaffold.Domain) | Aggregates (`Sample`), value objects (`SampleId`, `SampleName`), `SampleStatus` SmartEnum, domain events, outbound ports (`IRepository`, `IEventPublisher`, `ICacheService`, `IExternalApiClient`, `ISampleReadModelRepository`). Building blocks: `Result<T>`, `Specification<T>`, `HasDomainEventsBase`. |
-| [`Hex.Scaffold.Application`](../src/Hex.Scaffold.Application) | Use cases as CQRS commands/queries per feature folder (`Samples/Create`, `/Update`, `/Delete`, `/Get`, `/List`). `LoggingBehavior` pipeline behavior, `PagedResult`, DTOs. |
-| [`Hex.Scaffold.Adapters.Inbound`](../src/Hex.Scaffold.Adapters.Inbound) | FastEndpoints endpoints mapped to use cases; FluentValidation validators; `ResultExtensions` to map `Result` → HTTP. `SampleEventConsumer` Kafka `BackgroundService` projecting events onto Mongo. |
-| [`Hex.Scaffold.Adapters.Outbound`](../src/Hex.Scaffold.Adapters.Outbound) | `KafkaEventPublisher` (`IEventPublisher`), `ExternalApiClient` (`IExternalApiClient`). |
-| [`Hex.Scaffold.Adapters.Persistence`](../src/Hex.Scaffold.Adapters.Persistence) | `AppDbContext`, `EfRepository<T>` (`IRepository`/`IReadRepository`), `EventDispatcherInterceptor`, `MediatorDomainEventDispatcher`, `ListSamplesQueryService` (Dapper), `SampleReadModelRepository` (Mongo), `RedisCacheService`. Connection registration extensions per store. |
+| [`Hex.Scaffold.Domain`](../src/Hex.Scaffold.Domain) | `Account` aggregate (Stripe v2 `v2.core.account` reproduction), value objects (`AccountId`), `AppliedConfiguration` closed set, domain events (`AccountCreatedEvent` / `AccountUpdatedEvent`), outbound ports (`IRepository`, `IEventPublisher`, `ICacheService`, `IExternalApiClient`). Building blocks: `Result<T>`, `Specification<T>`, `HasDomainEventsBase`. |
+| [`Hex.Scaffold.Application`](../src/Hex.Scaffold.Application) | Use cases as CQRS commands/queries per feature folder (`Accounts/Create`, `/Update`, `/Get`, `/List`). `LoggingBehavior` pipeline behavior, `AccountDto`, `AccountListResult`. |
+| [`Hex.Scaffold.Adapters.Inbound`](../src/Hex.Scaffold.Adapters.Inbound) | FastEndpoints endpoints (POST/GET/POST/GET) under `/v2/core/accounts`; FluentValidation validators; `ResultExtensions` to map `Result` → HTTP. `AccountEventConsumer` Kafka `BackgroundService` (registered only when `inbound=kafka`). |
+| [`Hex.Scaffold.Adapters.Outbound`](../src/Hex.Scaffold.Adapters.Outbound) | `KafkaEventPublisher` (`IEventPublisher`), `NoOpEventPublisher` fallback when `outbound=rest`, `ExternalApiClient` (`IExternalApiClient`). |
+| [`Hex.Scaffold.Adapters.Persistence`](../src/Hex.Scaffold.Adapters.Persistence) | `AppDbContext` (DbSet&lt;Account&gt;), `EfRepository<T>` (`IRepository`/`IReadRepository`), `EventDispatcherInterceptor`, `MediatorDomainEventDispatcher`, `ListAccountsQueryService` (cursor pagination), `RedisCacheService` + `NullCacheService` fallback. NpgsqlDataSource built with `EnableDynamicJson()` for the jsonb columns the aggregate uses. |
 | [`Hex.Scaffold.Api`](../src/Hex.Scaffold.Api) | Composition root. Wires every adapter in `Configurations/ServiceConfigs.cs`, configures observability, rate limiting, health checks, FastEndpoints, and Scalar OpenAPI. |
 
 ## Composition root
@@ -102,9 +102,8 @@ All ports (dependency-inverted interfaces) live under `Domain/Ports/Outbound`:
 - `IEventPublisher` — integration event publisher (Kafka).
 - `ICacheService` — read-through cache.
 - `IExternalApiClient` — outbound HTTP.
-- `ISampleReadModelRepository` — Mongo projection for the read side.
 
-The application layer can declare query-specific ports when needed (e.g. `IListSamplesQueryService` for the Dapper-backed read path).
+The application layer can declare query-specific ports when needed — `IListAccountsQueryService` for the cursor-paginated list path is the example, defined alongside its query under `Application/Accounts/List/`.
 
 ## Why this shape?
 

@@ -49,7 +49,7 @@ helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
 - When `features.persistence=postgres`: a reachable PostgreSQL 14+ instance and a user with permission to create/alter tables (for the migration Job).
 - When `features.persistence=mongo`: a reachable MongoDB 6+ instance.
 - When `features.redis=true`: a reachable Redis 7+ instance.
-- When any `features.*=kafka`: a reachable Kafka cluster (Strimzi recommended). The topic `sample-events` must exist; the chart does **not** provision it.
+- When any `features.*=kafka`: a reachable Kafka cluster (Strimzi recommended). The topic `v2.core.accounts` (the `AccountEventPublishHandler` / `AccountEventConsumer` contract) must exist; the chart does **not** provision it.
 - For Application Insights: an existing workspace-based Application Insights resource and its connection string.
 
 ## Installing the chart
@@ -156,10 +156,10 @@ All defaults below come from [`values.yaml`](./values.yaml). Types follow the He
 
 | Key | Type | Default | Allowed | Description |
 |-----|------|---------|---------|-------------|
-| `features.inbound` | string | `rest` | `rest` · `kafka` | Which inbound adapter receives work. REST exposes the `/samples` API; Kafka runs the `SampleEventConsumer` BackgroundService. |
-| `features.outbound` | string | `kafka` | `rest` · `kafka` | Which outbound adapter publishes domain events. REST calls the resilient HTTP client; Kafka uses `KafkaEventPublisher`. |
-| `features.persistence` | string | `postgres` | `postgres` · `mongo` | Primary store. Postgres uses EF Core for writes + Dapper for reads; Mongo uses `SampleReadModelRepository`. |
-| `features.redis` | bool | `true` | `true` · `false` | Registers `RedisCacheService`. Must be `false` when `persistence=mongo` (chart fails fast). |
+| `features.inbound` | string | `rest` | `rest` · `kafka` | Which inbound adapter receives work. REST exposes the `/v2/core/accounts` Stripe v2 Accounts API; Kafka runs the `AccountEventConsumer` BackgroundService. |
+| `features.outbound` | string | `kafka` | `rest` · `kafka` | Which outbound adapter publishes domain events. REST falls back to `NoOpEventPublisher` (events are dropped); Kafka uses `KafkaEventPublisher` (topic `v2.core.accounts`). |
+| `features.persistence` | string | `postgres` | `postgres` · `mongo` | Primary store. Postgres uses EF Core (with `NpgsqlDataSourceBuilder.EnableDynamicJson()` for the Account aggregate's jsonb columns). Mongo currently registers `IMongoClient` only — no read-model is wired in this scaffold revision. |
+| `features.redis` | bool | `true` | `true` · `false` | Registers `RedisCacheService` (or `NullCacheService` when `false`). Must be `false` when `persistence=mongo` (chart fails fast). |
 
 ### Environment variable overrides
 
