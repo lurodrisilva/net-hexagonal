@@ -13,16 +13,22 @@ public class SampleConfiguration : IEntityTypeConfiguration<Sample>
     // calls ValueComparer<SampleId>.GetHashCode immediately on Add, before
     // SaveChanges, which detonates that sentinel.
     //
-    // Hi-Lo runs inside SetEntityStateAsync(Added) BEFORE IdentityMap.Add:
-    // it pulls a positive int from `samples_hilo_seq`, the converter below
-    // wraps it in a valid SampleId, and only then does IdentityMap see a
-    // properly-initialized struct. Sequence starts at 1 (Vogen requires > 0)
-    // and is created by the AddSampleIdHiLoSequence migration.
+    // PR #14 tried `.UseHiLo` paired with `.HasConversion`, expecting Hi-Lo
+    // to materialize a real id before IdentityMap.Add. That FAILED at
+    // runtime because for KEY properties EF's hashing step runs BEFORE the
+    // value-converter chain (and therefore before Hi-Lo). The Vogen
+    // ThrowHelper still fired.
+    //
+    // Custom ValueGenerator<SampleId> — see SampleIdValueGenerator.cs — runs
+    // EARLIER in the pipeline (during EntityGraphAttacher), gated only on
+    // `HasValueGenerator` + `ValueGeneratedOnAdd`, NOT on the value
+    // converter. By the time IdentityMap asks for the hash, the property
+    // already holds a valid SampleId pulled from `samples_hilo_seq`.
     builder.Property(x => x.Id)
       .HasConversion(
         id => id.Value,
         value => SampleId.From(value))
-      .UseHiLo("samples_hilo_seq")
+      .HasValueGenerator<SampleIdValueGenerator>()
       .ValueGeneratedOnAdd();
 
     builder.Property(x => x.Name)
