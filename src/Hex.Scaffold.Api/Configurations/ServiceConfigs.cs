@@ -3,6 +3,7 @@ using Scrutor;
 using Hex.Scaffold.Adapters.Inbound.Messaging;
 using Hex.Scaffold.Adapters.Outbound.Http;
 using Hex.Scaffold.Adapters.Outbound.Messaging;
+using Hex.Scaffold.Adapters.Persistence.Common;
 using Hex.Scaffold.Adapters.Persistence.Extensions;
 using Hex.Scaffold.Api.Options;
 using Hex.Scaffold.Domain.Ports.Outbound;
@@ -42,6 +43,16 @@ public static class ServiceConfigs
     {
       services.AddRedisServices(configuration, logger);
     }
+    else
+    {
+      // Domain/Application handlers inject ICacheService unconditionally.
+      // Register a no-op fallback BEFORE the Scrutor scan below so its
+      // RegistrationStrategy.Skip keeps RedisCacheService (matched by the
+      // *Service suffix filter) from filling the port and then exploding
+      // on its missing IConnectionMultiplexer dependency at request time.
+      services.AddScoped<ICacheService, NullCacheService>();
+      logger.LogInformation("Redis disabled — registered NullCacheService fallback.");
+    }
 
     // Kafka — producer is registered when either the inbound consumer OR
     // the outbound publisher needs it. Consumer + BackgroundService register
@@ -66,6 +77,17 @@ public static class ServiceConfigs
         return new ProducerBuilder<string, string>(config).Build();
       });
       services.AddScoped<IEventPublisher, KafkaEventPublisher>();
+    }
+    else
+    {
+      // SampleEventPublishHandler injects IEventPublisher unconditionally.
+      // Register a no-op fallback BEFORE the Scrutor scan below so its
+      // RegistrationStrategy.Skip keeps KafkaEventPublisher (matched by
+      // the *Publisher suffix filter) from filling the port and then
+      // exploding on its missing IProducer<string,string> dependency the
+      // moment any command triggers a domain notification.
+      services.AddScoped<IEventPublisher, NoOpEventPublisher>();
+      logger.LogInformation("Outbound Kafka disabled — registered NoOpEventPublisher fallback.");
     }
     if (kafkaConsumerNeeded)
     {
