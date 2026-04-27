@@ -29,7 +29,23 @@ public class SampleConfiguration : IEntityTypeConfiguration<Sample>
         id => id.Value,
         value => SampleId.From(value))
       .HasValueGenerator<SampleIdValueGenerator>()
-      .ValueGeneratedOnAdd();
+      .ValueGeneratedOnAdd()
+      // Anchor the model snapshot to the existing samples_hilo_seq sequence
+      // (created by the AddSampleIdHiLoSequence migration in PR #14). The
+      // Postgres-side sequence is still the source of ids — only the C# wiring
+      // of how EF READS from it changed (custom ValueGenerator instead of
+      // EF's built-in HiLoValueGenerator). At runtime SampleIdValueGenerator
+      // wins (HasValueGenerator above takes precedence over .UseHiLo's built-
+      // in generator); at snapshot/migration time the .UseHiLo annotation
+      // tells EF "this column is already keyed off samples_hilo_seq" so the
+      // diff against the pre-existing snapshot is EMPTY.
+      // Without this anchor, EF's default value-generation strategy for int
+      // PKs is IDENTITY-by-default, and the next `dotnet ef migrations add`
+      // would propose dropping the sequence and altering the column —
+      // breaking SampleIdValueGenerator at the next helm upgrade and tripping
+      // PendingModelChangesWarning (escalated to error by TreatWarningsAsErrors)
+      // on every existing migration runner pod.
+      .UseHiLo("samples_hilo_seq");
 
     builder.Property(x => x.Name)
       .HasMaxLength(SampleName.MaxLength)
