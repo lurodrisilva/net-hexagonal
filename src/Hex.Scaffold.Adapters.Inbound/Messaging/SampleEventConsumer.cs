@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
+using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Domain.Ports.Outbound;
 using Hex.Scaffold.Domain.SampleAggregate.Events;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,6 +37,19 @@ public sealed class SampleEventConsumer(
         {
           var message = _consumer.Consume(stoppingToken);
           if (message is null) continue;
+
+          // Extract the W3C trace context propagated by KafkaEventPublisher
+          // and link this consumer span to the producer trace, so the App Map
+          // draws the producer→consumer edge across services.
+          var parentContext = ExtractTraceContext(message.Message.Headers);
+          using var activity = KafkaTelemetry.Source.StartActivity(
+            $"process {Topic}", ActivityKind.Consumer, parentContext);
+          activity?.SetTag("messaging.system", "kafka");
+          activity?.SetTag("messaging.operation", "process");
+          activity?.SetTag("messaging.destination.name", Topic);
+          activity?.SetTag("messaging.kafka.message.key", message.Message.Key);
+          activity?.SetTag("messaging.kafka.partition", message.Partition.Value);
+          activity?.SetTag("messaging.kafka.offset", message.Offset.Value);
 
           using var scope = _scopeFactory.CreateScope();
           ProcessMessageAsync(message, scope.ServiceProvider, stoppingToken)
@@ -123,5 +139,24 @@ public sealed class SampleEventConsumer(
     {
       _logger.LogError(ex, "Missing expected property in event payload for key {EventType}", eventType);
     }
+  }
+
+  // W3C trace-context extraction — the inverse of the producer's header
+  // injection in KafkaEventPublisher.BuildTracingHeaders. Returns
+  // ActivityContext.None when traceparent is missing or unparseable, which
+  // makes the consumer span a new root rather than failing the message.
+  private static ActivityContext ExtractTraceContext(Headers? headers)
+  {
+    if (headers is null) return default;
+
+    if (!headers.TryGetLastBytes("traceparent", out var traceparentBytes))
+      return default;
+
+    var traceparent = Encoding.UTF8.GetString(traceparentBytes);
+    var tracestate = headers.TryGetLastBytes("tracestate", out var tracestateBytes)
+      ? Encoding.UTF8.GetString(tracestateBytes)
+      : null;
+
+    return ActivityContext.TryParse(traceparent, tracestate, out var ctx) ? ctx : default;
   }
 }
