@@ -1,6 +1,5 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Hex.Scaffold.Domain.Common;
-using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -12,7 +11,9 @@ public static class ObservabilityConfig
 {
   // Azure Monitor / Application Insights connection string. Env var takes
   // precedence over appsettings to match Microsoft's recommended production
-  // pattern. Empty = feature disabled (OTLP pipeline still runs).
+  // pattern. Empty = feature disabled (Azure Monitor side silent; the OTel
+  // pipeline still runs and feeds the classic AI SDK in-process channel
+  // for Live Metrics).
   private const string AzureMonitorEnvVar = "APPLICATIONINSIGHTS_CONNECTION_STRING";
   private const string AzureMonitorConfigKey = "ApplicationInsights:ConnectionString";
 
@@ -20,19 +21,16 @@ public static class ObservabilityConfig
   // an explicit AddSource("Npgsql"), the TracerProvider drops every EF / Dapper
   // Postgres span on the floor — App Insights then shows the API node with
   // zero outbound dependency edges and the Application Map looks broken.
+  // The classic AI SDK's DependencyTrackingTelemetryModule does NOT subscribe
+  // to Npgsql ActivitySource events (it only knows DiagnosticListener-based
+  // SqlClient), so this OTel subscription is the ONLY path Postgres edges
+  // reach the App Map. Don't remove without replacing.
   private const string NpgsqlActivitySource = "Npgsql";
-
-  // OTel resource attribute names per the semantic conventions, used for
-  // App Insights Cloud role name / Cloud role instance derivation. See
-  // https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-configuration
-  private const string ServiceNamespaceAttr = "service.namespace";
-  private const string ServiceInstanceAttr = "service.instance.id";
 
   public static IHostApplicationBuilder AddObservability(
     this IHostApplicationBuilder builder,
     string serviceName)
   {
-    var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4318";
     var appInsightsConnectionString =
       Environment.GetEnvironmentVariable(AzureMonitorEnvVar)
       ?? builder.Configuration[AzureMonitorConfigKey];
@@ -49,6 +47,25 @@ public static class ObservabilityConfig
                             ?? Environment.GetEnvironmentVariable("HOSTNAME")
                             ?? Environment.MachineName;
 
+    // OTel pipeline — wired ONLY to the Azure Monitor exporters. The OTLP
+    // exporter pair was removed because every export attempt was POSTing to
+    // a phantom collector (`http://otel-collector.observability.svc:4318`)
+    // that this scaffold never deploys; classic AI's DependencyTrackingTele-
+    // metryModule (re-enabled for Live Metrics — see below) was observing
+    // those failed HTTP calls via its system-wide HttpClient DiagnosticSource
+    // listener and surfacing them in Live Metrics as `Faulted` outbound
+    // dependencies. Removing the OTLP exporters eliminates the faulted
+    // dependency at the source.
+    //
+    // The TracerProvider / MeterProvider / LoggerProvider themselves remain
+    // load-bearing: AddSource("Npgsql") and AddSource(KafkaTelemetry.SourceName)
+    // are the ONLY mechanisms by which Postgres + Kafka spans reach App
+    // Insights, since the classic AI SDK does not subscribe to arbitrary
+    // ActivitySources. The AzureMonitor exporters serialize the OTel
+    // pipeline output into App Insights ingest format and ship to
+    // <region>.in.applicationinsights.azure.com directly, so the App Map
+    // dependency edges and `dependencies` table rows for Postgres / Kafka
+    // come from this path.
     builder.Services.AddOpenTelemetry()
       .ConfigureResource(resource => resource
         .AddService(serviceName, serviceNamespace, serviceVersion: null, autoGenerateServiceInstanceId: false, serviceInstanceId: serviceInstanceId)
@@ -70,12 +87,7 @@ public static class ObservabilityConfig
           // Kafka producer + consumer spans (Confluent.Kafka has no first-party
           // OTel package; KafkaEventPublisher and SampleEventConsumer emit
           // spans manually using this shared ActivitySource).
-          .AddSource(KafkaTelemetry.SourceName)
-          .AddOtlpExporter(opts =>
-          {
-            opts.Endpoint = new Uri(otlpEndpoint);
-            opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-          });
+          .AddSource(KafkaTelemetry.SourceName);
 
         if (azureMonitorEnabled)
         {
@@ -87,13 +99,7 @@ public static class ObservabilityConfig
         metrics
           .AddAspNetCoreInstrumentation()
           .AddHttpClientInstrumentation()
-          .AddRuntimeInstrumentation()
-          .AddOtlpExporter((exporterOptions, readerOptions) =>
-          {
-            exporterOptions.Endpoint = new Uri(otlpEndpoint);
-            exporterOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
-            readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
-          });
+          .AddRuntimeInstrumentation();
 
         if (azureMonitorEnabled)
         {
@@ -109,12 +115,6 @@ public static class ObservabilityConfig
       logging.IncludeFormattedMessage = true;
       logging.ParseStateValues = true;
 
-      logging.AddOtlpExporter(opts =>
-      {
-        opts.Endpoint = new Uri(otlpEndpoint);
-        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-      });
-
       if (azureMonitorEnabled)
       {
         logging.AddAzureMonitorLogExporter(o => o.ConnectionString = appInsightsConnectionString);
@@ -129,23 +129,16 @@ public static class ObservabilityConfig
     // LiveEndpoint key in APPLICATIONINSIGHTS_CONNECTION_STRING).
     //
     // QuickPulse does NOT generate telemetry — it subscribes to whatever the
-    // classic SDK's collectors emit into its pipeline. A previous revision
-    // disabled every collector to "keep the pipeline clean" and ended up
-    // streaming zeros to Live Metrics: request rate, request duration,
-    // dependency rate / duration, and CPU / memory all rendered empty in the
-    // portal even though the OTel side was ingesting fine.
+    // classic SDK's collectors emit into its in-process pipeline. The
+    // collectors enabled below feed it.
     //
-    // Re-enable the collectors QuickPulse needs. Trade-off: every request
-    // and every outbound dependency is now ingested twice (once via the
-    // OTel exporter above, once via the classic SDK), roughly doubling
-    // App Insights ingest cost for those signal types and producing two
-    // entries per call in the `requests` / `dependencies` tables. The App
-    // Map deduplicates on cloud_RoleName so the topology view stays clean,
-    // but KQL counters (e.g. `requests | count`) need a `summarize by
-    // sdkVersion` if you want to disambiguate. Accepted as the cost of
-    // working Live Metrics until we migrate to the AzureMonitor Distro
-    // (Azure.Monitor.OpenTelemetry.AspNetCore), which feeds Live Metrics
-    // directly off the OTel pipeline with no double-ingestion.
+    // Trade-off: every HTTP request and every outbound dependency is ingested
+    // twice (once via the AzureMonitor OTel exporter above, once via the
+    // classic SDK). App Map deduplicates on cloud_RoleName so the topology
+    // view stays clean; KQL counters need `summarize by sdkVersion` if you
+    // want to disambiguate. Cleanest long-term fix is migrating to
+    // Azure.Monitor.OpenTelemetry.AspNetCore (the Distro), which feeds Live
+    // Metrics directly off the OTel pipeline with no double-ingestion.
     if (azureMonitorEnabled)
     {
       builder.Services.AddApplicationInsightsTelemetry(o =>
