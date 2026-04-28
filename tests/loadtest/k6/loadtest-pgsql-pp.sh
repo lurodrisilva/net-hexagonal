@@ -192,7 +192,6 @@ run() {
       kill "${logs_pid}" 2>/dev/null || true
       wait "${logs_pid}" 2>/dev/null || true
     fi
-    cleanup
   }
   trap cleanup_on_exit EXIT INT TERM
   if wait_for_finish; then
