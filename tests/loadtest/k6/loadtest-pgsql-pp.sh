@@ -37,7 +37,7 @@
 #   PARALLELISM=4
 #   TIMEOUT=30m                 # `wait` deadline
 #   SCRIPT=<dir>/rest-api-loadtest-pgsql-pp.js
-#   testrun-pgsql-pp.yaml=<dir>/testrun-pgsql-pp.yaml
+#   TESTRUN_YAML=<dir>/testrun-pgsql-pp.yaml
 #
 # Examples
 #   ./loadtest.sh run                     # full execution + auto cleanup
@@ -56,7 +56,7 @@ CONFIGMAP_NAME="${CONFIGMAP_NAME:-hex-scaffold-loadtest}"
 PARALLELISM="${PARALLELISM:-4}"
 TIMEOUT="${TIMEOUT:-30m}"
 SCRIPT="${SCRIPT:-${SCRIPT_DIR}/rest-api-loadtest-pgsql-pp.js}"
-testrun-pgsql-pp.yaml="${testrun-pgsql-pp.yaml:-${SCRIPT_DIR}/testrun-pgsql-pp.yaml}"
+TESTRUN_YAML="${TESTRUN_YAML:-${SCRIPT_DIR}/testrun-pgsql-pp.yaml}"
 
 log()   { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 fatal() { log "ERROR: $*" >&2; exit 1; }
@@ -70,7 +70,7 @@ require() {
 prereq() {
   require kubectl
   [[ -r "${SCRIPT}" ]]       || fatal "k6 script not readable: ${SCRIPT}"
-  [[ -r "${testrun-pgsql-pp.yaml}" ]] || fatal "TestRun manifest not readable: ${testrun-pgsql-pp.yaml}"
+  [[ -r "${TESTRUN_YAML}" ]] || fatal "TestRun manifest not readable: ${TESTRUN_YAML}"
   kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 \
     || fatal "Namespace '${NAMESPACE}' not found in current kubectl context"
   kubectl api-resources --api-group=k6.io 2>/dev/null | grep -qw TestRun \
@@ -91,7 +91,7 @@ render_testrun() {
     -e "s|name: hex-scaffold-loadtest$|name: ${CONFIGMAP_NAME}|" \
     -e "s|parallelism: [0-9][0-9]*|parallelism: ${PARALLELISM}|" \
     -e "s|value: \"http://hex-scaffold.default.svc:80\"|value: \"${BASE_URL}\"|" \
-    "${testrun-pgsql-pp.yaml}"
+    "${TESTRUN_YAML}"
 }
 
 apply() {
@@ -166,7 +166,7 @@ summary() {
   log "Fetching summary block from runner logs"
   kubectl -n "${NAMESPACE}" logs -l "k6_cr=${TESTRUN_NAME}" \
     --all-containers=true --tail=-1 --max-log-requests=20 \
-    | awk '/======== hex-scaffold REST load-test summary ========/,/======================================================/'
+    | awk '/======== hex-scaffold v2 Accounts load-test summary ========/,/======================================================/'
 }
 
 # ---- cleanup / run ----------------------------------------------------------
@@ -192,7 +192,7 @@ run() {
       kill "${logs_pid}" 2>/dev/null || true
       wait "${logs_pid}" 2>/dev/null || true
     fi
-    #cleanup
+    cleanup
   }
   trap cleanup_on_exit EXIT INT TERM
   if wait_for_finish; then
