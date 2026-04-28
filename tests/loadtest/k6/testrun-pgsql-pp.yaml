@@ -22,14 +22,14 @@ spec:
   script:
     configMap:
       name: hex-scaffold-loadtest
-      file: rest-api-loadtest.js
+      file: rest-api-loadtest-pgsql-pp.js
   runner:
     env:
       - name: BASE_URL
         value: "http://hex-scaffold.default.svc:80"
     resources:
-      requests: { cpu: 200m,  memory: 256Mi }
-      limits:   { cpu: "1",    memory: 512Mi }
+      requests: { cpu: 750m,  memory: 512Mi }
+      limits:   { cpu: 1000m,    memory: 1Gi }
   arguments: >-
     --summary-export=/tmp/summary.json
     --tag testid=hex-scaffold-rest-loadtest

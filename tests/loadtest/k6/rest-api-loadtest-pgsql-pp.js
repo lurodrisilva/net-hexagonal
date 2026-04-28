@@ -92,11 +92,14 @@ export const options = (() => {
         startRate: 5,
         timeUnit: "1s",
         preAllocatedVUs: 20,
-        maxVUs: 200,
+        // maxVUs: 200,
+        maxVUs: 40,
         stages: [
           { target: 10,  duration: "30s" },   // warmup
-          { target: 50,  duration: "1m"  },   // steady
-          { target: 150, duration: "1m"  },   // peak
+          // { target: 50,  duration: "1m"  },   // steady
+          { target: 30,  duration: "1m"  },   // steady
+          // { target: 150, duration: "1m"  },   // peak
+          { target: 40, duration: "1m"  },   // peak
           { target: 20,  duration: "30s" },   // drain
           { target: 0,   duration: "15s" },
         ],
@@ -111,7 +114,7 @@ export const options = (() => {
         rate: 30,
         timeUnit: "1s",
         preAllocatedVUs: 10,
-        maxVUs: 40,
+        maxVUs: 10,
       },
     },
     thresholds: thresholds(),
