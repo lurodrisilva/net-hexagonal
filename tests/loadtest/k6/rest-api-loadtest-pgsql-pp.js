@@ -266,12 +266,27 @@ function textSummary(data) {
   const ratePct = (n) => (n && n.values && typeof n.values.rate === "number"
     ? (n.values.rate * 100).toFixed(2) + "%"
     : "n/a");
+  // Compute average req/s from each metric's count and the wall-clock test
+  // duration. Avoids depending on k6's auto-computed `rate` field, which
+  // shifts with `summaryTimeUnit`.
+  const durSec = (data.state?.testRunDurationMs ?? 0) / 1000;
+  const rps = (n) => {
+    const c = n && n.values ? n.values.count : undefined;
+    return typeof c === "number" && durSec > 0 ? (c / durSec).toFixed(2) : "n/a";
+  };
   return `
 ======== hex-scaffold v2 Accounts load-test summary ========
 Requests:                ${m.http_reqs?.values?.count ?? "n/a"}
 Error rate (5xx/4xx):    ${ratePct(m.golden_errors_rate)}
 Throttled rate (429):    ${ratePct(m.golden_throttled_rate)}
 http_req_failed (k6):    ${ratePct(m.http_req_failed)}
+
+Requests per second      avg
+  total                  ${rps(m.http_reqs)}
+  create                 ${rps(m["http_req_duration{name:create}"])}
+  get                    ${rps(m["http_req_duration{name:get}"])}
+  list                   ${rps(m["http_req_duration{name:list}"])}
+  update                 ${rps(m["http_req_duration{name:update}"])}
 
 Latency (ms)             p50        p95        p99
   create                 ${fmt(m["http_req_duration{name:create}"], "p(50)")}     ${fmt(m["http_req_duration{name:create}"], "p(95)")}     ${fmt(m["http_req_duration{name:create}"], "p(99)")}
