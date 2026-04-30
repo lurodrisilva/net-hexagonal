@@ -16,7 +16,6 @@ image:
   pullPolicy: Always
 imagePullSecrets: []
 
-replicaCount: 4
 nameOverride: ""
 fullnameOverride: ""
 
@@ -154,13 +153,15 @@ ingress:
           pathType: Prefix
   tls: []
 
+
+replicaCount: 12
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: "1"
+    cpu: 80m
     memory: 512Mi
+  limits:
+    cpu: 400m
+    memory: 768i
 
 autoscaling:
   enabled: false

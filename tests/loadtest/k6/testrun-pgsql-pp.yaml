@@ -18,7 +18,7 @@ metadata:
   name: hex-scaffold-rest-loadtest
 spec:
   # Distribute the scenario across 4 k6 runners.
-  parallelism: 4
+  parallelism: 6
   script:
     configMap:
       name: hex-scaffold-loadtest
@@ -29,7 +29,7 @@ spec:
     # every node with `agentpool=<nodepool-name>`; nodepool2 has no taints,
     # so a plain nodeSelector is enough — no tolerations required.
     nodeSelector:
-      agentpool: nodepool2
+      agentpool: nodepool3
     env:
       - name: BASE_URL
         value: "http://hex-scaffold.default.svc:80"
