@@ -24,6 +24,12 @@ spec:
       name: hex-scaffold-loadtest
       file: rest-api-loadtest-pgsql-pp.js
   runner:
+    # Pin runner pods to the dedicated load-generation nodepool so the k6
+    # workload doesn't compete for CPU with the system nodepool. AKS labels
+    # every node with `agentpool=<nodepool-name>`; nodepool2 has no taints,
+    # so a plain nodeSelector is enough — no tolerations required.
+    nodeSelector:
+      agentpool: nodepool2
     env:
       - name: BASE_URL
         value: "http://hex-scaffold.default.svc:80"
