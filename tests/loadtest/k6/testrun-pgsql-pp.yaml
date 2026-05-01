@@ -33,9 +33,14 @@ spec:
     env:
       - name: BASE_URL
         value: "http://hex-scaffold.default.svc:80"
+    # nodepool3 nodes are Standard_D2s_v6 (2 vCPU); after AKS system DaemonSets
+    # take ~530m, ~1370m is allocatable per node. With requests.cpu=750m only
+    # 1 runner fits per node, so parallelism>nodes left runners stuck Pending
+    # with "0/N nodes available: insufficient cpu". Dropping to 600m gives 2
+    # runners per node and lets the configured parallelism actually schedule.
     resources:
-      requests: { cpu: 750m,  memory: 512Mi }
-      limits:   { cpu: 1000m,    memory: 1Gi }
+      requests: { cpu: 600m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 1Gi  }
   arguments: >-
     --summary-export=/tmp/summary.json
     --tag testid=hex-scaffold-rest-loadtest
