@@ -20,6 +20,28 @@ Deployment artifacts. Today there's a single Helm chart for AKS / generic Kubern
 - `features.*` in values.yaml maps 1:1 onto the API's `FeaturesOptions`; flipping `Persistence: postgres` → `mongo` swaps the registered repository at startup.
 - The Postgres connection string in `secrets.postgresConnectionString` is committed in plaintext for local/demo use only — production must use a real secret-management system (CSI driver, External Secrets, Sealed Secrets). Do not commit live credentials.
 
+### Deployed State (2026-05-02)
+
+**Current Helm release:** Revision 37 (heavy churn from active tuning)
+
+**Deployed pod shape:**
+- `replicaCount=10`, `requests.cpu=80m, limits.cpu=360m, requests.memory=512Mi, limits.memory=768Mi`
+- No HPA configured
+- These are the LIVE values, sourced from `kubectl get deploy hex-scaffold -n hex-scaffold`
+
+**Connectivity:**
+- Postgres: `pgsql-pp-platinum-1` (PG Flexible Server, `Standard_D8ds_v5`, 6000 IOPS, ZoneRedundant HA, 128GB) in resource group `resources-test-rg`, subscription `lcamargoreis-microsoft-subscription` (`df21ed78-be77-40e3-9184-38eb23175791`)
+- Sidecar: `hex-scaffold-wiremock` Deployment in same namespace (`hex-scaffold`), configured as in-cluster stub (NOT a real upstream)
+
+**Features flag state (deployed ConfigMap):**
+- `Features__InboundAdapter=rest`
+- `Features__OutboundAdapter=rest`
+- `Features__Persistence=postgres`
+- `Features__UseRedis=false`
+- `ExternalApi__BaseUrl=http://hex-scaffold-wiremock:8080`
+
+**GitOps status:** ArgoCD exists in cluster (`devops-system/argocd`) but Helm revision 37 indicates manual upgrades — not currently GitOps-managed.
+
 ### Testing Requirements
 - `helm lint deploy/helm/hex-scaffold` runs cleanly (one INFO about a missing icon is expected).
 - Render check: `helm template hex-scaffold deploy/helm/hex-scaffold | kubectl apply --dry-run=client -f -` — catches malformed quantities before `helm upgrade` does.

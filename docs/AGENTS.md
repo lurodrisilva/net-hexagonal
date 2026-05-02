@@ -29,6 +29,10 @@ Long-form project documentation: architecture rationale, per-layer guides, ops r
 - Update the relevant doc when you change the corresponding layer. Stale docs here are worse than missing ones — readers trust them.
 - Keep cross-references: `architecture.md` should link to `domain.md` / `application.md` / etc. when introducing those concepts.
 
+### Runtime & Deployment Environment
+
+The repo's runtime environment (cluster topology, deployed pod shape, PG Flex configuration, load-test bottleneck analysis) is documented inline in `tests/loadtest/AGENTS.md` and `deploy/AGENTS.md`. These are the authoritative sources for understanding load-test results and deployment state. New runtime knowledge discovered during diagnostic sessions should be added to those files, not to `docs/`.
+
 ### Testing Requirements
 - No automated test coverage. Sanity-check Markdown locally.
 

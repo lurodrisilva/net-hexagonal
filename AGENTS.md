@@ -26,6 +26,18 @@
 | `deploy/` | Helm chart for AKS deployment (see `deploy/AGENTS.md`) |
 | `docs/` | Long-form architecture and ops docs (see `docs/AGENTS.md`) |
 
+## Deployment Target (current)
+
+**AKS cluster:** `aks-test` in `aks-test-rg` (brazilsouth, K8s 1.34, Free tier, kubenet, RBAC disabled, public API)
+
+**Subscription:** `lcamargoreis-microsoft-subscription` (`df21ed78-be77-40e3-9184-38eb23175791`)
+
+**Database:** `pgsql-pp-platinum-1` (PG Flexible Server) in `resources-test-rg`
+
+**Note:** Seven PG Flex servers exist in `resources-test-rg` forming a tier ladder (bronze/silver/gold/platinum); only `platinum-1` is the load-test target.
+
+For deployment details, see `deploy/AGENTS.md`. For load-test environment and current bottleneck analysis, see `tests/loadtest/AGENTS.md`.
+
 ## For AI Agents
 
 ### Working In This Directory

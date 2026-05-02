@@ -39,7 +39,7 @@ env: []
 #    the values here feed a Secret template suitable for local / demo use.
 secrets:
   # Postgres connection string (used when features.persistence=postgres)
-  postgresConnectionString: "Host=10.0.9.4;Database=postgres;Username=adminpg;Password=$kFFb23j@%*_*KKll;Port=5432;Maximum Pool Size=100"
+  postgresConnectionString: "Host=pgsql-pp-platinum-1.postgres.database.azure.com;Database=postgres;Username=adminpg;Password=$kFFb23j@%*_*KKll;Port=5432;Maximum Pool Size=100"
   # Mongo connection string  (used when features.persistence=mongo)
   mongoConnectionString: "mongodb://mongo:27017"
   # Redis connection string  (used when features.redis=true)
