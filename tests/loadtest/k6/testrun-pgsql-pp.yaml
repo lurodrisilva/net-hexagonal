@@ -17,7 +17,7 @@ kind: TestRun
 metadata:
   name: hex-scaffold-rest-loadtest
 spec:
-  # Distribute the scenario across 4 k6 runners.
+  # Distribute the scenario across 6 k6 runners.
   parallelism: 6
   script:
     configMap:
