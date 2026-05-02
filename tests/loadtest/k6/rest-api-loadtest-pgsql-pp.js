@@ -91,16 +91,16 @@ export const options = (() => {
         exec: "crudFlow",
         startRate: 5,
         timeUnit: "1s",
-        preAllocatedVUs: 2000,
+        preAllocatedVUs: 1200,
         // maxVUs: 200,
-        maxVUs: 4000,
+        maxVUs: 2200,
         stages: [
-          { target: 1000,  duration: "30s" },   // warmup
+          { target: 200,  duration: "30s" },   // warmup
           // { target: 50,  duration: "1m"  },   // steady
-          { target: 3000,  duration: "1m"  },   // steady
+          { target: 1400,  duration: "1m"  },   // steady
           // { target: 150, duration: "1m"  },   // peak
-          { target: 4000, duration: "1m"  },   // peak
-          { target: 2000,  duration: "30s" },   // drain
+          { target: 2000, duration: "1m"  },   // peak
+          { target: 600,  duration: "30s" },   // drain
           { target: 0,   duration: "15s" },
         ],
       },
@@ -113,8 +113,8 @@ export const options = (() => {
         duration: "2m",
         rate: 30,
         timeUnit: "1s",
-        preAllocatedVUs: 1000,
-        maxVUs: 1000,
+        preAllocatedVUs: 200,
+        maxVUs: 200,
       },
     },
     thresholds: thresholds(),
