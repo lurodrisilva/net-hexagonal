@@ -14,8 +14,23 @@ public static class PostgreSqlServiceExtensions
     IConfiguration configuration,
     ILogger logger)
   {
-    var connectionString = configuration.GetConnectionString("PostgreSql")
+    var rawConnectionString = configuration.GetConnectionString("PostgreSql")
       ?? throw new InvalidOperationException("PostgreSql connection string is required.");
+
+    // Apply connection-pool tuning defaults that the operator can override by
+    // setting the corresponding key in the connection string. The defaults
+    // address a connection-thrash failure mode observed under sustained
+    // load: short pool idle lifetimes plus aggressive pruning caused
+    // ~14k new TCP+TLS handshakes in a 4-minute test, dominating CPU on
+    // already-throttled app pods. NoResetOnClose skips the RESET ALL
+    // round-trip when returning a connection to the pool, which is safe
+    // here because every request gets a fresh DbContext scope (no
+    // transaction state, search_path, or session settings to clean up).
+    var b = new NpgsqlConnectionStringBuilder(rawConnectionString);
+    if (!b.ContainsKey("Connection Idle Lifetime"))   b.ConnectionIdleLifetime   = 600;
+    if (!b.ContainsKey("Connection Pruning Interval")) b.ConnectionPruningInterval = 30;
+    if (!b.ContainsKey("No Reset On Close"))          b.NoResetOnClose            = true;
+    var connectionString = b.ConnectionString;
 
     services.AddScoped<EventDispatcherInterceptor>();
     services.AddScoped<IDomainEventDispatcher, MediatorDomainEventDispatcher>();
