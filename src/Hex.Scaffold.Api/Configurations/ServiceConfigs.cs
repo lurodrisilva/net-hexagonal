@@ -122,6 +122,13 @@ public static class ServiceConfigs
 
     // Scrutor: scan adapter assemblies for any remaining port implementations.
     // Explicit registrations above take precedence (RegistrationStrategy.Skip).
+    //
+    // Persistence-aware exclusion: Scrutor's default Skip strategy only matches
+    // identical (ServiceType, ImplementationType) pairs, so it would still add
+    // the OPPOSITE persistence's repository under the same IRepository<Account>
+    // interface — and DI returns the LAST registered impl, breaking the
+    // selected backend at request time. Drop the inactive backend's repo from
+    // the scan to keep IRepository<Account> cleanly bound to the chosen one.
     services.Scan(scan => scan
       .FromAssembliesOf(
         typeof(Hex.Scaffold.Adapters.Persistence.PostgreSql.AppDbContext),
@@ -131,10 +138,12 @@ public static class ServiceConfigs
           "Hex.Scaffold.Adapters.Persistence",
           "Hex.Scaffold.Adapters.Outbound")
         .Where(t =>
-          t.Name.EndsWith("Service") ||
-          t.Name.EndsWith("Repository") ||
-          t.Name.EndsWith("Publisher") ||
-          t.Name.EndsWith("Client")))
+          (t.Name.EndsWith("Service") ||
+           t.Name.EndsWith("Repository") ||
+           t.Name.EndsWith("Publisher") ||
+           t.Name.EndsWith("Client"))
+          && !(features.PostgresEnabled && t.FullName!.Contains(".MongoDb."))
+          && !(features.MongoEnabled    && t.FullName!.Contains(".PostgreSql."))))
       .UsingRegistrationStrategy(RegistrationStrategy.Skip)
       .AsImplementedInterfaces()
       .WithScopedLifetime());
