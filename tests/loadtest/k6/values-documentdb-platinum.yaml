@@ -1,4 +1,6 @@
-# Platinum tier overlay — DocumentDB M40 (4 vCPU, HA on, primary + standby).
+# Platinum tier overlay — DocumentDB M50 (8 vCPU, 32 GiB RAM, HA on, primary
+# + standby). Upgraded in place from M40 — see
+# docs/loadtest-run-2026-05-04-documentdb-platinum-m50.md.
 #
 # Apply with:
 #   helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
@@ -18,10 +20,12 @@ application:
 migrations:
   enabled: false
 
-# Platinum app profile — 8 base replicas, HPA scales to 24 to give the M40
-# headroom to actually be exercised (4 vCPU = ~16-32k ops/sec ceiling on the
-# primary, replication doubles it).
-replicaCount: 8
+# Platinum app profile (M50, 8 vCPU + 32 GiB) — 12 base replicas, HPA scales
+# to 32. Bumped from 8/24 (M40 baseline) per the Gold/Platinum follow-up
+# observations: M40 was already app-tier queue-bound at 8/24; M50 doubles DB
+# compute, so app footprint is doubled to give the DB tier a fair shake at
+# saturation rather than re-bottlenecking on the app side.
+replicaCount: 12
 resources:
   requests:
     cpu: 80m
@@ -32,8 +36,8 @@ resources:
 
 autoscaling:
   enabled: true
-  minReplicas: 8
-  maxReplicas: 24
+  minReplicas: 12
+  maxReplicas: 32
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 75
   behavior:
