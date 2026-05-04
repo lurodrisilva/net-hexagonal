@@ -36,10 +36,14 @@ public static class MongoDbServiceExtensions
       var settings = MongoClientSettings.FromConnectionString(connectionString);
       settings.ServerSelectionTimeout = TimeSpan.FromSeconds(5);
       settings.ConnectTimeout = TimeSpan.FromSeconds(10);
-      // Pool sizing — match the Postgres MaxPoolSize=100 ceiling we use in
-      // load tests, doubled because Mongo connections are cheaper to keep
-      // open and the workload is short-RTT-per-op.
-      settings.MaxConnectionPoolSize = 200;
+      // Pool sizing — keep aligned with the Postgres MaxPoolSize=100 ceiling
+      // we use in load tests. The earlier 200 ceiling was too aggressive: at
+      // 12 app pods × 200 = 2400 potential connections, M30/M40 connection
+      // ceilings (~800/~1600) would saturate and surface as request-pipeline
+      // queueing rather than DB latency. 100 keeps the math sane:
+      // 12 pods × 100 = 1200 fits inside M40+ (~1600+) and never overcommits
+      // smaller tiers either.
+      settings.MaxConnectionPoolSize = 100;
       settings.MinConnectionPoolSize = 10;
       settings.MaxConnectionIdleTime = TimeSpan.FromMinutes(10);
       return new MongoClient(settings);
