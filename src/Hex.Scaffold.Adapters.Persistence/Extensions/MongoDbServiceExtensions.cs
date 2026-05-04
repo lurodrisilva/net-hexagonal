@@ -77,6 +77,20 @@ public static class MongoDbServiceExtensions
 
     if (BsonClassMap.IsClassMapRegistered(typeof(Account))) return;
 
+    // `Id` is declared on EntityBase<Account, AccountId>, not on Account
+    // itself. Calling `cm.MapIdProperty(a => a.Id)` on a class map for
+    // Account trips the BSON `EnsureMemberInfoIsForThisClass` guard with:
+    //   "memberInfo must be for class Account, but was for class EntityBase`2"
+    // Standard fix: register the base class first; the derived class map
+    // inherits the Id mapping.
+    if (!BsonClassMap.IsClassMapRegistered(typeof(EntityBase<Account, AccountId>)))
+    {
+      BsonClassMap.RegisterClassMap<EntityBase<Account, AccountId>>(cm =>
+      {
+        cm.MapIdProperty(e => e.Id);
+      });
+    }
+
     var ctor = typeof(Account)
       .GetConstructors(BindingFlags.NonPublic | BindingFlags.Instance)
       .FirstOrDefault(c => c.GetParameters().Length == 15)
@@ -86,7 +100,7 @@ public static class MongoDbServiceExtensions
 
     BsonClassMap.RegisterClassMap<Account>(cm =>
     {
-      cm.MapIdProperty(a => a.Id);
+      // Id is inherited from EntityBase<,> registration above.
       cm.MapProperty(a => a.Livemode);
       cm.MapProperty(a => a.Created);
       cm.MapProperty(a => a.Closed);
