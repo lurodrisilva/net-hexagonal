@@ -95,10 +95,11 @@ export const options = (() => {
   // We aim for median (p50) < 20 ms while DB CPU/IOPS lands 60-80%.
   const tier = (__ENV.TIER || "bronze").toLowerCase();
   const profiles = {
-    bronze:   { peak: 100,  pre: 200,  max: 400  },  // M10, no HA
-    silver:   { peak: 250,  pre: 400,  max: 800  },  // M20, no HA (M20 doesn't support HA)
-    gold:     { peak: 600,  pre: 1000, max: 1800 },  // M30, HA on
-    platinum: { peak: 3000, pre: 4000, max: 6000 },  // M50, HA on (was 1500/2000/3000 for M40)
+    bronze:          { peak: 100,  pre: 200,   max: 400   },  // M10, no HA
+    silver:          { peak: 250,  pre: 400,   max: 800   },  // M20, no HA (M20 doesn't support HA)
+    gold:            { peak: 600,  pre: 1000,  max: 1800  },  // M30, HA on
+    platinum:        { peak: 3000, pre: 4000,  max: 6000  },  // M50, HA on (was 1500/2000/3000 for M40)
+    "platinum-plus": { peak: 6000, pre: 8000,  max: 12000 },  // M60, HA on — 16 vCPU / 64 GiB target ≈10k RPS
   };
   const p = profiles[tier] || profiles.bronze;
 

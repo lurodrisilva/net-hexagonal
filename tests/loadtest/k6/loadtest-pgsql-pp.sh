@@ -38,6 +38,9 @@
 #   TIMEOUT=30m                 # `wait` deadline
 #   SCRIPT=<dir>/rest-api-loadtest-pgsql-pp.js
 #   TESTRUN_YAML=<dir>/testrun-pgsql-pp.yaml
+#   TIER=gold                   # bronze | silver | gold | platinum | platinum-plus
+#                               # Selects the per-tier arrival-rate ramp from the
+#                               # k6 script's `profiles` table.
 #
 # Examples
 #   ./loadtest.sh run                     # full execution + auto cleanup
@@ -57,6 +60,7 @@ PARALLELISM="${PARALLELISM:-6}"
 TIMEOUT="${TIMEOUT:-30m}"
 SCRIPT="${SCRIPT:-${SCRIPT_DIR}/rest-api-loadtest-pgsql-pp.js}"
 TESTRUN_YAML="${TESTRUN_YAML:-${SCRIPT_DIR}/testrun-pgsql-pp.yaml}"
+TIER="${TIER:-gold}"
 
 log()   { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 fatal() { log "ERROR: $*" >&2; exit 1; }
@@ -91,6 +95,7 @@ render_testrun() {
     -e "s|name: hex-scaffold-loadtest$|name: ${CONFIGMAP_NAME}|" \
     -e "s|parallelism: [0-9][0-9]*|parallelism: ${PARALLELISM}|" \
     -e "s|value: \"http://hex-scaffold.default.svc:80\"|value: \"${BASE_URL}\"|" \
+    -e "s|value: \"__TIER__\"|value: \"${TIER}\"|" \
     "${TESTRUN_YAML}"
 }
 

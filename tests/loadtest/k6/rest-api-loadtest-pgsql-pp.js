@@ -84,6 +84,20 @@ export const options = (() => {
       thresholds: thresholds(),
     };
   }
+  // TIER selects the per-tier arrival-rate ramp. Sizing rationale: PG flex
+  // SKU compute roughly doubles per step (B1ms 1 → D2ds 2 → D4ds 4 → D8ds 8
+  // → D16ds 16 vCPU). The peak arrival rate is set ~2-3× the expected
+  // steady-state CPU-bound RPS so the runner *can* saturate the DB. The
+  // report tracks the actual saturation reached.
+  const tier = (__ENV.TIER || "gold").toLowerCase();
+  const profiles = {
+    bronze:          { peak: 150,  pre: 300,  max: 500  },  // B1ms (1 vCPU / 2 GiB, burstable)
+    silver:          { peak: 500,  pre: 800,  max: 1500 },  // D2ds_v5 (2 vCPU / 8 GiB)
+    gold:            { peak: 1500, pre: 2000, max: 3000 },  // D4ds_v5 (4 vCPU / 16 GiB)
+    platinum:        { peak: 1500, pre: 2000, max: 3000 },  // D8ds_v5 (8 vCPU / 32 GiB) — same offered ramp as Gold; achieved ~5330 RPS at peak
+    "platinum-plus": { peak: 3000, pre: 4000, max: 6000 },  // D16ds_v5 (16 vCPU / 64 GiB) — target ≈10k RPS
+  };
+  const p = profiles[tier] || profiles.gold;
   return {
     scenarios: {
       crud_ramp: {
@@ -91,18 +105,14 @@ export const options = (() => {
         exec: "crudFlow",
         startRate: 5,
         timeUnit: "1s",
-        preAllocatedVUs: 2000,
-        // Gold profile (DB = pgsql-pp-gold, D4ds_v5 GP, 4 vCPU, 6000 IOPS,
-        // 500 MB/s, Premium SSD v2): IOPS budget is ~50× Silver's, so the
-        // binding metric will almost certainly shift to CPU (4 vCPU). Push
-        // arrival rate hard enough that DB CPU lands in the 60–80% band.
-        maxVUs: 3000,
+        preAllocatedVUs: p.pre,
+        maxVUs: p.max,
         stages: [
-          { target: 300,  duration: "30s" },   // warmup
-          { target: 800,  duration: "1m"  },   // steady
-          { target: 1500, duration: "3m"  },   // peak (≈9000 RPS aggregate × 6 runners — first run undershot at 800)
-          { target: 300,  duration: "30s" },   // drain
-          { target: 0,    duration: "15s" },
+          { target: Math.round(p.peak * 0.2), duration: "30s" },   // warmup
+          { target: Math.round(p.peak * 0.5), duration: "1m"  },   // steady
+          { target: p.peak,                   duration: "3m"  },   // peak
+          { target: Math.round(p.peak * 0.2), duration: "30s" },   // drain
+          { target: 0,                        duration: "15s" },
         ],
       },
       // Read-heavy overlay. List is cursor-paginated — we just hit the
