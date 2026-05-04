@@ -35,7 +35,18 @@
 import http from "k6/http";
 import { check, group, sleep } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
-import { randomIntBetween, randomString } from "https://jslib.k6.io/k6-utils/1.4.0/index.js";
+
+// Inlined replacements for jslib.k6.io/k6-utils — that domain is not always
+// resolvable from inside the cluster (CoreDNS upstream returned SERVFAIL on
+// the 2026-05-04 retry run). The utils are small enough to keep local.
+function randomIntBetween(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+function randomString(len, charset = "abcdefghijklmnopqrstuvwxyz0123456789") {
+  let out = "";
+  for (let i = 0; i < len; i++) out += charset.charAt(Math.floor(Math.random() * charset.length));
+  return out;
+}
 
 const BASE_URL = __ENV.BASE_URL || "http://hex-scaffold.default.svc:80";
 const ACCOUNTS_PATH = "/v2/core/accounts";

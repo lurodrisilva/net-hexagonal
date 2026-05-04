@@ -20,26 +20,51 @@ application:
 migrations:
   enabled: true
 
-# Platinum+ app profile (D16ds_v5, 16 vCPU + 64 GiB DB) — 24 base replicas,
-# HPA scales to 64. Doubled from PG Platinum's 4/16 in proportion to the
-# doubled DB compute. Per-pod requests bumped to 200m/512Mi to keep p95
-# tight under sustained 10k-RPS load (less HPA scale-up churn). Postgres
-# MaxPoolSize stays at 100 — 64 pods × 100 = 6400 connections fits inside
-# D16ds_v5's connection ceiling (~5000 max_connections raised by Azure for
-# the larger SKU; if needed bump az postgres flexible-server parameter).
-replicaCount: 24
+# Platinum+ app profile (D16ds_v5, 16 vCPU + 64 GiB DB) — app-tier scale-up.
+#
+# First Platinum+ run (2026-05-04, 24 replicas / HPA 24-64 / limits 1500m)
+# capped at ~5,107 RPS with HPA pinned at 64/64 and DB CPU only 24.18%.
+# The bottleneck was upstream of the DB: per-pod CPU saturated long before
+# Postgres did. To push closer to the 10k RPS target this overlay widens the
+# app tier in three ways:
+#   1. HPA max  64 → 128  (2× headroom for horizontal scale)
+#   2. base replicas 24 → 32  (warmer fleet at peak, less ramp lag)
+#   3. per-pod CPU request 200m → 100m, limit 1500m → 2000m
+#
+# Why drop the request from 200m to 100m? Adding cluster nodes was attempted
+# (scale nodepool / nodepool2 to 18 each) and was BLOCKED by the Azure
+# tenant's MCAPS deny policy on this subscription — neither D2s_v3 nor D2s_v6
+# new VMs are allowed in brazilsouth via this AKS cluster. So we have to fit
+# more app pods inside the existing 22-node fleet (10 × D2s_v3 nodepool, 10 ×
+# D2s_v6 nodepool2, 2 × D8s_v6 nodepool3 reserved for k6 runners).
+#
+# kubectl top showed nodepool/nodepool2 nodes at only 13-39% actual CPU
+# despite scheduler-side request budget being tight (cert-manager, argocd,
+# vault on nodepool consume request slots they barely use at runtime).
+# Halving the request from 200m to 100m doubles the schedulable density
+# without changing real CPU demand — actual per-pod use under load is ~210m
+# (measured), well above the 100m request, so HPA still scales aggressively.
+#
+# nodepool3 was independently scaled 5 → 2 (k6 runners need ~3.6 vCPU; the
+# previous 5×D8s_v6 = 40 vCPU was hugely over-provisioned) — see the matching
+# affinity block at the bottom of this file and testrun-pgsql-pp.yaml.
+#
+# Postgres MaxPoolSize stays at 100 — 128 pods × 100 = 12 800 max client-side
+# connection slots, but actual concurrent connections under steady RPS stay
+# well below D16ds_v5's ~5 000 server-side ceiling (first run peaked at 745).
+replicaCount: 32
 resources:
   requests:
-    cpu: 200m
+    cpu: 100m
     memory: 512Mi
   limits:
-    cpu: 1500m
+    cpu: 2000m
     memory: 1Gi
 
 autoscaling:
   enabled: true
-  minReplicas: 24
-  maxReplicas: 64
+  minReplicas: 32
+  maxReplicas: 128
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 75
   behavior:
@@ -64,3 +89,29 @@ rateLimit:
   permitLimit: 200000
   windowSeconds: 60
   queueLimit: 0
+
+# Spread app pods across ALL three nodepools — nodepool, nodepool2 AND nodepool3.
+# Originally we wanted to keep nodepool3 reserved for k6 runners, but the Azure
+# tenant's MCAPS deny policy blocks adding nodes to either nodepool or nodepool2,
+# so we have to use every node we have. nodepool3 was scaled down to 2 × D8s_v6
+# (= 16 vCPU); k6 runners only need ~3.6 vCPU (6 runners × 600m), leaving
+# ~12 vCPU on nodepool3 — plenty of headroom for app pods to share with the
+# load generators without starving them. Free request budget by nodepool right
+# now: ~5.6 (nodepool) + ~7-8 (nodepool2) + ~13.4 (nodepool3) ≈ 26 vCPU.
+# 128 pods × 100m = 12.8 vCPU comfortably fits.
+#
+# We use a soft preference (preferredDuringScheduling…) to nudge pods toward
+# nodepool2 and nodepool3 (which have more free request budget than nodepool,
+# whose D2s_v3 nodes carry cert-manager/argocd/vault). No required affinity:
+# pods can land on any nodepool the scheduler picks.
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+            - key: agentpool
+              operator: In
+              values:
+                - nodepool2
+                - nodepool3
