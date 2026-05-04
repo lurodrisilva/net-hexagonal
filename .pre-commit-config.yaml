@@ -1,0 +1,56 @@
+# .pre-commit-config.yaml
+#
+# Pre-commit hooks for net-hexagonal. Two gates run on every commit:
+#
+#   1. detect-secrets — fails the commit if a new secret-like string lands
+#      in any *.yaml / *.yml file, comparing against `.secrets.baseline`
+#      (the curated set of known-and-accepted findings).
+#   2. check-yaml — verifies YAML syntax. Helm templates are excluded
+#      because their `{{- ... -}}` Go-template prelude is not valid YAML
+#      until rendered.
+#
+# Setup once per clone:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Re-scan and accept current findings (e.g. after triaging a flagged value):
+#   detect-secrets scan --baseline .secrets.baseline
+#
+# Run all hooks against every file (e.g. after editing this config):
+#   pre-commit run --all-files
+#
+# Note: the local script `.hooks/redact_secrets.py` is intentionally NOT
+# wired as a hook — its YAML-rewriting is destructive and over-broad
+# (matches any field whose key contains "password"/"secret"/"key"/"token").
+# Keep it as a manual one-shot when you actually want to scrub a file.
+
+repos:
+  # Detect new secrets (fails the commit if found).
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        # detect-secrets imports `ruamel.yaml` lazily for YAML parsing; the
+        # pre-commit-managed virtualenv does not pull it transitively, so we
+        # pin it explicitly here to avoid `ModuleNotFoundError: ruamel`.
+        additional_dependencies:
+          - 'ruamel.yaml>=0.18'
+        files: ^.*\.(ya?ml)$
+        exclude: |
+          (?x)^(
+            \.secrets\.baseline
+            | deploy/helm/.*/templates/.*
+          )$
+
+  # YAML syntax validation. Skips Helm templates (Go template syntax is not
+  # valid YAML before rendering).
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        files: ^.*\.(ya?ml)$
+        exclude: |
+          (?x)^(
+            deploy/helm/.*/templates/.*
+          )$
