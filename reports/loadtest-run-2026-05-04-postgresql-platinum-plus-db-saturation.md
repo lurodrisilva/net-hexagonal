@@ -228,3 +228,103 @@ This is a textbook case of "more replicas don't help when the underlying CPU bud
 - [ ] Profile EF Core + Npgsql under load (BenchmarkDotNet harness on a representative endpoint) to quantify CPU-per-request and identify the dominant cost — likely `Translation`, `IdentityMap.Add`, or `JSON jsonb` materialisation for the nested Stripe-shaped fields.
 - [ ] Investigate `MaxPoolSize` reduction. With 128 pods × pool 100 we briefly approached the server's `max_connections` ceiling. Lowering pool to 50 (still well above per-pod concurrent need) would halve client-side connection slots used at peak — protects the server and reduces churn.
 - [ ] Restore `vault` PDB to `maxUnavailable: 0` (was patched to `1` to allow the nodepool3 scale; the `kubectl patch` is already reverted in the repo's deploy ops checklist).
+
+---
+
+## Run 3 (2026-05-04 — nodepool3 expanded 2 → 5 nodes; falsifies the cluster-CPU ceiling hypothesis)
+
+> Operator freed regional vCPU quota and `az aks nodepool scale --name nodepool3 --node-count 5` succeeded
+> (the same command had failed previously with `RequestDisallowedByPolicy`). Cluster app-tier capacity
+> roughly tripled. App profile, helm overlay and k6 ramp profile were unchanged from Run 2 — only the
+> cluster underneath grew. We rolled the deployment to pull `:latest` (post PR #53 merge) before testing.
+
+**Cluster shape for this run:**
+- nodepool: 10 × D2s_v3 (20 vCPU)
+- nodepool2: 10 × D2s_v6 (20 vCPU)
+- **nodepool3: 5 × D8s_v6 (40 vCPU)** — expanded from 2
+- Cluster app budget ≈ 52 vCPU free for hex-scaffold (vs ~22 vCPU in Run 2)
+
+**Window:** 22:47:32–22:53:34 UTC (3-min peak hold inside).
+
+### Result
+
+| Metric | Run 1 (24/64, 200m) | Run 2 (32/128, 100m) | **Run 3 (32/128, 100m, +nodepool3)** | Δ vs Run 2 |
+|---|---|---|---|---|
+| **Aggregate RPS** | ~5,107 | ~5,084 | **~5,106** | flat (+0.4%) |
+| DB CPU peak (1m max) | 24.18% | 39.85% | **24.34%** | back to Run 1 levels |
+| DB Memory peak | 33.67% | 50.75% | 36.63% | down |
+| DB IOPS peak | 1,459 | 1,426 | **1,601** | slight rise |
+| DB active_connections peak | 745 | 4,054 | **1,160** | sharply lower (less queue) |
+| Latency p95 — list (ms) | 7–283 | 659–865 | **8–11** | **~95% lower** |
+| Latency p95 — get (ms) | 187–223 | 387–424 | **20–32** | **~94% lower** |
+| Latency p95 — create (ms) | 205–238 | 395–434 | **25–37** | **~93% lower** |
+| Latency p95 — update (ms) | 233–286 | 473–533 | **26–38** | **~94% lower** |
+| HPA scaled to | 64/64 (max) | 128/128 (max) | **128/128 (max)** | unchanged |
+| k6 saturation (concurrent VUs p95) | 637–639 | 903–951 | **637–638** | back to Run 1 levels |
+| Errors (k6) | 0.00% | 0.00% | 0.00% | ✅ |
+| Throttled (429) | 0.00% | 0.00% | 0.00% | ✅ |
+
+**The Run 2 hypothesis ("AKS cluster's ~22 vCPU app-tier budget is the binding ceiling") is falsified.** Tripling the cluster app-tier compute (22 → 52 vCPU available) **did not move aggregate RPS** — it stayed at ~5,107. What it *did* deliver:
+
+- **Latency dropped roughly 95% across all four CRUD verbs** — p95 create went from 417 ms (Run 2 median) down to ~26 ms; p95 list from 786 ms → ~10 ms.
+- **k6 client-side saturation halved** — concurrent VUs p95 dropped from ~928 (Run 2) back to ~638, matching Run 1. The k6 runners are no longer queuing requests waiting for app responses; iterations finish promptly.
+- **DB connection pressure halved** — active_connections peaked at 1,160 (vs Run 2's 4,054) because each pod's pool churns much faster when latency is small, so steady-state in-flight count is lower.
+- **DB CPU is back to Run 1 levels** (24.34%), confirming the Run 2 spike to 39.85% was driven by connection-establishment overhead from the queued-up pool, not by extra useful work.
+
+### Per-runner k6 summary (Run 3)
+
+| Runner | Requests | Avg RPS | p95 create (ms) | p95 get (ms) | p95 list (ms) | p95 update (ms) | Saturation p95 VUs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 268,401 | 851.03 | 25.26 | 21.31 | 9.14 | 26.49 | 638 |
+| 2 | 268,401 | 849.91 | 37.04 | 31.67 | 8.40 | 38.26 | 638 |
+| 3 | 268,380 | 850.72 | 24.71 | 20.49 | 10.21 | 26.01 | 638 |
+| 4 | 268,380 | 852.50 | 25.53 | 22.26 | 8.83 | 27.94 | 638 |
+| 5 | 268,380 | 851.14 | 30.23 | 26.79 | 11.44 | 34.06 | 637 |
+| 6 | 268,380 | 851.05 | 26.85 | 22.70 | 9.65 | 28.59 | 637 |
+| **6 total** | **1,610,322** | **5,106.35** | **~26 (med)** | **~22 (med)** | **~9 (med)** | **~28 (med)** | **~638** |
+
+### DB metric trace (per-minute, max + avg) — Run 3
+
+| Time | CPU max | CPU avg | Mem max | Mem avg | IOPS max | active_connections max |
+|---|---|---|---|---|---|---|
+| 22:47 (warmup) | 0.52% | 0.45% | 30.54% | 30.54% | 1 | 8 |
+| 22:48 (warmup) | 1.75% | 1.12% | 31.25% | 30.89% | 71 | 134 |
+| 22:49 (steady ramp) | 8.31% | 6.85% | 31.44% | 31.40% | 1,229 | 155 |
+| 22:50 (peak ramp) | 13.57% | 12.59% | 31.68% | 31.63% | 1,428 | 214 |
+| 22:51 (peak hold) | 15.41% | 15.41% | 31.73% | 31.73% | 1,454 | 311 |
+| 22:52 (peak hold) | 23.05% | 22.03% | 35.57% | 35.01% | 1,506 | 976 |
+| 22:53 (peak hold + drain) | **24.34%** | 23.76% | 36.63% | 36.56% | **1,601** | **1,160** |
+
+DB CPU walked monotonically up to 24.34% over the peak hold — same shape and same level as Run 1 — and never came close to the saturation band. Memory plateaued at 36% (just connection-buffer + system baseline). IOPS at 1,601 / 6,000 ceiling = 27%. The DB is dramatically over-provisioned for what this app pushes through it.
+
+### Pod placement (Run 3)
+
+The scheduler heavily preferred the now-larger nodepool3 because each node has 8 vCPU allocatable vs 2 vCPU on D2s nodes:
+
+| Nodepool | Nodes | App pods | Pods/node |
+|---|---:|---:|---:|
+| nodepool3 (5× D8s_v6) | 5 | **115** | 23 / 26 / 26 / 32 / 16-15 |
+| nodepool2 (10× D2s_v6) | 10 | 16 | 1-4 |
+| nodepool (10× D2s_v3) | 10 | 1 | 0-1 |
+| **Total** | **25** | **132** (incl. 4 wiremock) | |
+
+End-of-test `kubectl top nodes` (drain phase, not peak) showed nodepool3 at **2-5%** CPU and **13-18%** memory — three of the new D8s_v6 nodes were barely warming up. Even at peak, nodepool3 was the dominant compute provider but had massive room to spare. With 5 D8s_v6 nodes hosting 115 pods, each pod had ~330m of real CPU available (vs ~240m in Run 2 with 2 nodes / 66 pods) — that headroom is what crushed latency.
+
+### What's actually capping ~5,107 RPS, then?
+
+Three runs, three different cluster shapes, **three identical aggregate RPS numbers**. This eliminates app-pod count, app-pod CPU request, app-pod limit, HPA cap, pod placement, and cluster compute as the binding constraint. The ceiling is upstream of all of those.
+
+Candidate causes (ordered by likelihood given the data):
+
+1. **The k6 offered ramp itself is producing this rate.** With `peak: 3000` iterations/sec/runner across 6 runners and `ramping-arrival-rate`, the *target* is 18 000 iter/sec. But the script does ~1 HTTP op per iteration weighted across `{create, get, list, update}` and per-iteration logic (sleep, scenario branching, `randomString`/`randomIntBetween`) costs measurable wall-clock time on the runner side. With `preAllocatedVUs=4000, maxVUs=6000` and observed VU saturation p95 of ~638, k6 *isn't* hitting the iteration target — Run 3's tight latency proves the *system* could do far more work. The cap is on the **load-generator side** of the loop. Verifying this is the next step (raise `peak` to 6 000 or 9 000 iter/sec/runner and re-run; if RPS doesn't move, it's not generator-side; if it does, we've simply been under-driving the system in every run).
+2. **A ClusterIP / kube-proxy / network-path cap.** The k6 runners hit the `hex-scaffold` Service and kube-proxy round-robins across pods. iptables / IPVS / Linux conntrack limits can throttle aggregate per-Service throughput in the 5–10k RPS range without showing up as CPU on either app pods or DB.
+3. **A serialisation point inside the EF Core / Npgsql pipeline at the request edge** (e.g. `DbContext` factory contention, model-translation cache lock, single shared `NpgsqlDataSource` lock at high concurrency) that doesn't bottleneck on CPU but does bottleneck on contention.
+
+Run 3 strongly argues against "PG D16 is over-provisioned" being the actionable take-away — it's perfectly fine, the *real* RPS limit just hasn't been measured yet because we keep hitting some upstream cap before we get to it.
+
+### Re-test addendum action items
+
+- [ ] **Raise the k6 `peak` rate** in `tests/loadtest/k6/rest-api-loadtest-pgsql-pp.js` (`profiles["platinum-plus"]`) from 3 000 to 6 000 (or 9 000) iter/sec/runner and re-run. With Run 3's ~26 ms p95 the system clearly has more capacity; if k6's offered rate is the cap, RPS will rise. If it doesn't, the next suspect is the Service/network path.
+- [ ] **Add per-second time-series capture** for both k6 (`--summary-time-unit=s --summary-trend-stats=avg,p95`) and Azure Monitor PG metrics during the peak-hold window. The current per-minute aggregation hides any short-window saturation that might explain the consistent 5,107 RPS ceiling.
+- [ ] **Investigate kube-proxy / iptables conntrack limits on the AKS nodes**: `sysctl net.netfilter.nf_conntrack_max` and `nf_conntrack_count` during a run. Conntrack table exhaustion would visibly show up here.
+- [ ] **PG Gold (D4ds_v5) re-test with the Run 3 app profile** is now even more compelling: PG Platinum+ at 24% CPU + 36% memory + 1,160 connections is wildly over-provisioned for the offered load this cluster produces. PG Gold likely delivers identical RPS at much lower cost.

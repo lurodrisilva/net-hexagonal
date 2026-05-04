@@ -91,19 +91,23 @@ rateLimit:
   queueLimit: 0
 
 # Spread app pods across ALL three nodepools — nodepool, nodepool2 AND nodepool3.
-# Originally we wanted to keep nodepool3 reserved for k6 runners, but the Azure
-# tenant's MCAPS deny policy blocks adding nodes to either nodepool or nodepool2,
-# so we have to use every node we have. nodepool3 was scaled down to 2 × D8s_v6
-# (= 16 vCPU); k6 runners only need ~3.6 vCPU (6 runners × 600m), leaving
-# ~12 vCPU on nodepool3 — plenty of headroom for app pods to share with the
-# load generators without starving them. Free request budget by nodepool right
-# now: ~5.6 (nodepool) + ~7-8 (nodepool2) + ~13.4 (nodepool3) ≈ 26 vCPU.
-# 128 pods × 100m = 12.8 vCPU comfortably fits.
+# nodepool3 was rescaled 2 → 5 × D8s_v6 (= 40 vCPU) for the third run after the
+# operator manually freed cluster resources, so it once again carries the bulk
+# of app pods (its per-node 8 vCPU absorbs many more pods than D2s nodes).
+# k6 runners only need ~3.6 vCPU (6 × 600m); with 5 × D8s_v6 there is ~36 vCPU
+# of headroom on nodepool3 to share with the load generators.
+#
+# Free request budget by nodepool (run 3 baseline):
+#   nodepool  (10× D2s_v3): ~8 vCPU free
+#   nodepool2 (10× D2s_v6): ~8 vCPU free
+#   nodepool3 (5×  D8s_v6): ~36 vCPU free
+#   total ≈ 52 vCPU — 128 pods × 100m = 12.8 vCPU fits with massive headroom.
 #
 # We use a soft preference (preferredDuringScheduling…) to nudge pods toward
-# nodepool2 and nodepool3 (which have more free request budget than nodepool,
-# whose D2s_v3 nodes carry cert-manager/argocd/vault). No required affinity:
-# pods can land on any nodepool the scheduler picks.
+# nodepool2 + nodepool3. The scheduler heavily skews to nodepool3 because each
+# of its nodes has 8 vCPU allocatable vs 2 vCPU on D2s nodes (run 3: ~115 of
+# 128 pods landed on nodepool3, 16 on nodepool2, 1 on nodepool). No required
+# affinity: pods can land on any nodepool the scheduler picks.
 affinity:
   nodeAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
