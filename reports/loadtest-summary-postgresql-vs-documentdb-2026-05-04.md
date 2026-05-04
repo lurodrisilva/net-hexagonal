@@ -24,6 +24,31 @@ All runs target the **60–80% saturation band** on the limiting resource. Regio
 
 Historical (no longer canonical): M30 — 2 vCPU / 8 GiB, HA on, ~1,003 RPS, CPU 76.96% ✅. Filed under [`loadtest-run-2026-05-04-documentdb-gold.md`](./loadtest-run-2026-05-04-documentdb-gold.md) for the original sweep.
 
+## App Profile per Tier and Run
+
+The hex-scaffold app pod is the same image across every run; what changes per tier is the replica count, HPA bounds, and (for PG Platinum only) request sizing. HPA target is **70% CPU / 75% memory** on every run.
+
+### PostgreSQL runs
+
+| Tier | Replicas (HPA min/max) | Pod requests | Pod limits | Notes |
+|------|-----------------------:|--------------|------------|-------|
+| Bronze   | **4 / 8**   | `cpu=80m, mem=384Mi`  | `cpu=1000m, mem=768Mi` | Baseline app footprint for B1ms tier |
+| Silver   | **6 / 12**  | `cpu=80m, mem=384Mi`  | `cpu=1000m, mem=768Mi` | App tier never CPU-bound at this run |
+| Gold     | **8 / 16**  | `cpu=80m, mem=384Mi`  | `cpu=1000m, mem=768Mi` | Doubled replicas vs Bronze |
+| Platinum | **4 / 16**  | `cpu=160m, mem=512Mi` | `cpu=1000m, mem=768Mi` | **Higher requests** to reduce HPA churn at peak; lower base replicas because each pod is more capacity-rich |
+
+### DocumentDB (Mongo vCore) runs
+
+| Tier | Replicas (HPA min/max) | Pod requests | Pod limits | Notes |
+|------|-----------------------:|--------------|------------|-------|
+| Bronze (M10)        | **4 / 8**   | `cpu=80m, mem=384Mi` | `cpu=1000m, mem=768Mi` | App-tier capped well below offered load |
+| Silver (M20)        | **6 / 12**  | `cpu=80m, mem=384Mi` | `cpu=1000m, mem=768Mi` | DB-tier-bound (both CPU + memory in band) |
+| Gold M30 (historical) | **8 / 16** | `cpu=80m, mem=384Mi` | `cpu=1000m, mem=768Mi` | Original sweep — no longer canonical |
+| Gold (M40)          | **8 / 24**  | `cpu=80m, mem=384Mi` | `cpu=1000m, mem=768Mi` | HPA cap raised to 24 to push past M30's RPS |
+| Platinum (M50)      | **12 / 32** | `cpu=80m, mem=384Mi` | `cpu=1000m, mem=768Mi` | **Bumped from 8/24** — more replicas needed to saturate M50's 8 vCPU; pairs with `MaxConnectionPoolSize=100` (PR #42) |
+
+Cross-engine note at matched tiers: PG and Mongo runs use **the same replica counts and HPA bounds at Bronze, Silver, and the historical Gold (M30)**. They diverge at Gold/Platinum where Mongo runs scaled out more aggressively (24 max → 32 max) to push the higher-tier DBs into the saturation band, while PG Platinum took the opposite tack — fewer base replicas but heavier per-pod requests.
+
 ## Cross-Engine Comparison at the Same Tier Name
 
 | Tier (compute) | Postgres SKU | PG RPS | Mongo SKU | Mongo RPS | Δ |
