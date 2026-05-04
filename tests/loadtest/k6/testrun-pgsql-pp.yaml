@@ -33,6 +33,12 @@ spec:
     env:
       - name: BASE_URL
         value: "http://hex-scaffold.default.svc:80"
+      # TIER selects the per-tier arrival-rate ramp from the script's
+      # `profiles` table (bronze | silver | gold | platinum | platinum-plus).
+      # The orchestrator (loadtest-pgsql-pp.sh) substitutes __TIER__ at apply
+      # time; defaults to 'gold' if invoked directly via kubectl.
+      - name: TIER
+        value: "__TIER__"
     # nodepool3 nodes are Standard_D2s_v6 (2 vCPU); after AKS system DaemonSets
     # take ~530m, ~1370m is allocatable per node. With requests.cpu=750m only
     # 1 runner fits per node, so parallelism>nodes left runners stuck Pending

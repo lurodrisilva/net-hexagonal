@@ -1,0 +1,66 @@
+# Platinum+ tier overlay — PostgreSQL Flexible Server D16ds_v5 (16 vCPU,
+# 64 GiB RAM, Premium SSD v2). New top-of-ladder tier targeting ≈10k RPS.
+# Provisioned as a parallel server (NOT in-place upgrade from D8ds_v5) —
+# keeps the D8 Platinum baseline live and adds Platinum+ as the new ceiling.
+#
+# Apply with:
+#   helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
+#     -n hex-scaffold \
+#     -f tests/loadtest/k6/values-pgsql-pp-platinum-plus.yaml \
+#     --set secrets.postgresConnectionString='<from secret>'
+
+features:
+  inbound: rest
+  outbound: rest
+  persistence: postgres
+
+application:
+  environment: Production
+
+migrations:
+  enabled: true
+
+# Platinum+ app profile (D16ds_v5, 16 vCPU + 64 GiB DB) — 24 base replicas,
+# HPA scales to 64. Doubled from PG Platinum's 4/16 in proportion to the
+# doubled DB compute. Per-pod requests bumped to 200m/512Mi to keep p95
+# tight under sustained 10k-RPS load (less HPA scale-up churn). Postgres
+# MaxPoolSize stays at 100 — 64 pods × 100 = 6400 connections fits inside
+# D16ds_v5's connection ceiling (~5000 max_connections raised by Azure for
+# the larger SKU; if needed bump az postgres flexible-server parameter).
+replicaCount: 24
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1500m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 24
+  maxReplicas: 64
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 8
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+
+rateLimit:
+  permitLimit: 200000
+  windowSeconds: 60
+  queueLimit: 0

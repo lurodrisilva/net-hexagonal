@@ -11,7 +11,7 @@
 #   loadtest-documentdb.sh cleanup            # delete TestRun + ConfigMap
 #   loadtest-documentdb.sh run      <metal>   # deploy → apply → wait → summary → cleanup
 #
-# metal ∈ {bronze, silver, gold, platinum}.
+# metal ∈ {bronze, silver, gold, platinum, platinum-plus}.
 #
 # Required env (no defaults — set before run):
 #   ADMIN_PWD       admin password for DocumentDB clusters (literal)
@@ -56,7 +56,7 @@ mongo_conn_string_for() {
 
 deploy() {
   local metal="${1:?usage: deploy <metal>}"
-  case "$metal" in bronze|silver|gold|platinum) ;; *) fatal "unknown metal: $metal" ;; esac
+  case "$metal" in bronze|silver|gold|platinum|platinum-plus) ;; *) fatal "unknown metal: $metal" ;; esac
 
   local values_file="${SCRIPT_DIR}/values-documentdb-${metal}.yaml"
   [[ -r "$values_file" ]] || fatal "values overlay not found: $values_file"
