@@ -58,18 +58,79 @@ Cross-engine note at matched tiers: PG and Mongo runs use **the same replica cou
 | Gold (4 vCPU / 16 GiB) | D4ds_v5 | ~2,616 | M40 | ~2,553 | ≈ parity (PG +2.5%) |
 | Platinum (8 vCPU / 32 GiB) | D8ds_v5 | ~5,330 | M50 | ~5,147 | ≈ parity (PG +3.6%) |
 
-## Silver-Tier Deep Dive — PG Silver vs Mongo Silver
+## Deep Dives by Tier
+
+Each tier is compared apples-to-apples between engines (DB tier + app footprint + saturation + latency). Numbers are pulled directly from the linked detail reports.
+
+### Bronze-Tier Deep Dive — PG Bronze vs Mongo Bronze
+
+| Metric | Postgres Bronze (B1ms) | Mongo Bronze (M10) |
+|---|---|---|
+| Compute | 1 vCPU / 2 GiB (burstable) | 0.5 vCPU / 2 GiB |
+| HA | none (single node) | off |
+| App replicas (HPA min/max) | 4 / 8 | 4 / 8 |
+| Pod requests / limits | `80m/384Mi` / `1000m/768Mi` | `80m/384Mi` / `1000m/768Mi` |
+| Aggregate RPS | ~138 | **~174** |
+| DB CPU peak | 93.48% max (credit-exhaust drain artifact); 32.31% avg | 53.6% (just below band) |
+| DB Memory peak | **76.89%** (✅ band) | **68.9%** (✅ band) |
+| App-side p95 (create / update) | ~138 ms / similar (k6 visible only); App Insights showed 499 timeout tail | **32.47 ms / 37.42 ms** |
+| Saturation verdict | Memory-bound + IOPS-throttled; burstable CPU credits cap sustained throughput | Memory-bound at 68.9%; CPU has small headroom |
+
+**Headline:** Mongo Bronze beats PG Bronze by **+26% on RPS** while running latencies **~4× lower**. PG B1ms's burstable-CPU credit model is the dominant constraint — sustained CPU above 20% baseline depletes credits, after which throughput collapses. Beyond that, B1ms's IOPS ceiling pushed PG into seconds-level p95 with a 499-timeout tail invisible to k6. The 0.5-vCPU M10 has no comparable throttling layer. Both engines hit the memory band cleanly — this tier is genuinely memory-bound on either side.
+
+### Silver-Tier Deep Dive — PG Silver vs Mongo Silver
 
 | Metric | Postgres Silver (D2ds_v5) | Mongo Silver (M20) |
 |---|---|---|
 | Compute | **2 vCPU / 8 GiB** | 1 vCPU / 4 GiB |
 | HA | off | off |
+| App replicas (HPA min/max) | 6 / 12 | 6 / 12 |
+| Pod requests / limits | `80m/384Mi` / `1000m/768Mi` | `80m/384Mi` / `1000m/768Mi` |
 | Aggregate RPS | ~473 | ~432 |
 | DB CPU peak | 47.79% (under band) | **78.8%** (✅ in band) |
 | DB Memory peak | 33.63% (under band) | 61.1% (✅ in band) |
+| App-side p95 (create / update) | ~14 ms / ~16 ms | ~70 ms / ~120 ms (proportional to higher tier saturation) |
 | Saturation verdict | DB has 50%+ headroom — **workload-limited, not tier-limited** | **DB is the cap** |
 
-The headline: **PG Silver has 2× the vCPU and 2× the RAM yet only delivers ~10% more RPS than Mongo Silver**. PG Silver's CPU never crossed 60% — the Postgres tier is *not the bottleneck* at this offered load. The cap is upstream (app tier or load profile), so the comparison is apples-to-oranges: Mongo Silver is genuinely tier-bound at 432 RPS while PG Silver could sustain notably more if the offered load were raised. To make the Silver-vs-Silver comparison fair, PG Silver needs a re-test at a higher offered RPS until CPU lands in the 60–80% band.
+**Headline:** PG Silver has 2× the vCPU and 2× the RAM yet only delivers ~10% more RPS than Mongo Silver. PG Silver's CPU never crossed 60% — the Postgres tier is *not the bottleneck* at this offered load. The cap is upstream (app tier or load profile), so the comparison is apples-to-oranges: Mongo Silver is genuinely tier-bound at 432 RPS while PG Silver could sustain notably more if the offered load were raised. **Action item:** PG Silver re-test with a higher offered ramp would tighten the cross-engine comparison; today's number is a lower bound on what D2ds_v5 can do.
+
+### Gold-Tier Deep Dive — PG Gold vs Mongo Gold (M40)
+
+| Metric | Postgres Gold (D4ds_v5) | Mongo Gold (M40) |
+|---|---|---|
+| Compute | **4 vCPU / 16 GiB** | **4 vCPU / 16 GiB** |
+| HA | off | on (zone-redundant standby) |
+| App replicas (HPA min/max) | 8 / 16 | 8 / 24 |
+| Pod requests / limits | `80m/384Mi` / `1000m/768Mi` | `80m/384Mi` / `1000m/768Mi` |
+| Aggregate RPS | **~2,616** | ~2,553 |
+| DB CPU peak | **79.35%** (✅ in band) | 86.9% (⚠️ overshoot at 05:27, 89.65% during drain) |
+| DB Memory peak | 55.77% (under band) | 62.4% (✅ in band) |
+| App-side p95 (create / update) | ~298 ms / ~370 ms (one runner had list p95 outlier of 5,614 ms — connection-pool acquisition tail) | 458–472 ms / 687–703 ms |
+| Server-side DB latency (avg) | n/a (single-op DB times implied <50 ms from saturation math) | 2.30–3.14 ms |
+| Saturation verdict | Cleanly in band; CPU is the binding metric | Overshot the band; HA replication adds tail cost |
+
+**Headline:** Same compute, near-identical RPS (PG +2.5%), but **PG Gold sits cleanly inside the band at 79.35% CPU while Mongo Gold M40 overshoots at 86.9%**. The HA-on configuration on Mongo (zone-redundant standby) adds replication and failover-readiness cost that PG Gold (no HA in this run) doesn't pay. PG Gold's connection-pool was close to its 1,600 ceiling (peak `active_connections=903` against 16 pods × 100 pool); Mongo Gold's pool was overcommitted (200 × 8+ pods > 1,600 cap), surfacing as the high update p95 — fixed in PR #42 by lowering pool to 100. **At the same DB compute, PG is the more comfortable choice** under this CRUD shape; closing the gap on Mongo would mean either disabling HA (changes the durability story) or stepping up to M50.
+
+### Platinum-Tier Deep Dive — PG Platinum vs Mongo Platinum (M50)
+
+| Metric | Postgres Platinum (D8ds_v5) | Mongo Platinum (M50) |
+|---|---|---|
+| Compute | **8 vCPU / 32 GiB** | **8 vCPU / 32 GiB** |
+| HA | off | on (zone-redundant standby) |
+| App replicas (HPA min/max) | **4 / 16** | **12 / 32** |
+| Pod requests / limits | **`160m/512Mi`** / `1000m/768Mi` | `80m/384Mi` / `1000m/768Mi` |
+| Aggregate RPS | **~5,330** | ~5,147 |
+| DB CPU peak | 64.88% (✅ low edge of band — large headroom) | **73.5%** (✅ middle of band) |
+| DB Memory peak | 45.51% (under band) | 46.9% (under band) |
+| App-side p95 (create / update) | ~467 ms / ~623 ms (median across runners); list 732 ms | 591–715 ms / 728–878 ms; list 519–1393 ms (cold-cache paging) |
+| Server-side DB latency (avg) | n/a (single op ~345 ms p95 implied by USL math at the knee) | 3.30–4.20 ms |
+| Saturation verdict | In band but with 15+ percentage points of CPU headroom | Cleanly mid-band; HA cost absorbed |
+
+**Headline:** Near-parity (PG +3.6%) at the practical ceiling for this CRUD workload, but the two engines reach it via very different app-tier strategies:
+- **PG Platinum** uses **heavier per-pod requests** (`160m/512Mi`) with fewer base replicas (4/16). Each pod is bigger, HPA reacts less.
+- **Mongo Platinum** uses **smaller pods** (`80m/384Mi`) with **more replicas** (12/32). Pool size was lowered to 100 (PR #42) to avoid overcommitting M50's connection ceiling.
+
+PG Platinum landed at the lower edge of the band (64.88%) — it could likely push another ~30% of RPS before saturating fully. Mongo Platinum landed mid-band at 73.5% with ~26% headroom. Both engines have memory over-provisioned for this workload (~46% peak on 32 GiB) — for memory-bound workloads (large working sets) the picture would shift. **At Platinum compute, throughput is no longer the differentiator; HA posture, latency tail, and cost-per-RPS become the deciding factors.**
 
 ## Key Takeaways
 
