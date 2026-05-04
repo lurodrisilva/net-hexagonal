@@ -81,7 +81,12 @@ rateLimit:
 #    scaffold/demo use.
 wiremock:
   enabled: true
-  replicaCount: 1
+  # Scale WireMock for high-concurrency load tests. With the app tier scaled
+  # to 16 replicas under HPA, a single WireMock at 250m CPU becomes the
+  # bottleneck (queue buildup pushes p95 to ~2-3s, throughput collapses,
+  # and DB CPU paradoxically *drops*). 4 replicas × 1000m limit = 4 vCPU
+  # of mock capacity, comfortably above the outbound-call rate we generate.
+  replicaCount: 4
   image:
     repository: wiremock/wiremock
     # Pinned to an immutable patched tag because the floating "3-alpine" alias
@@ -92,10 +97,10 @@ wiremock:
     port: 8080
   resources:
     requests:
-      cpu: 100m
+      cpu: 500m
       memory: 384Mi
     limits:
-      cpu: 250m
+      cpu: 1000m
       memory: 768Mi
   # Global response delay (milliseconds) injected into every stub's response
   # at render time. Lets the application's HttpClient resilience pipeline
@@ -157,18 +162,45 @@ ingress:
 replicaCount: 10
 resources:
   requests:
-    cpu: 160m
-    memory: 512Mi
+    cpu: 80m
+    memory: 384Mi
   limits:
     cpu: 1000m
     memory: 768Mi
 
 autoscaling:
   enabled: true
-  minReplicas: 4
-  maxReplicas: 10
+  minReplicas: 8
+  maxReplicas: 16
+  # Target keeps pods at <=70% CPU saturation (well under the 75% ceiling we
+  # tolerate for these load tests). HPA scales out the moment average pod CPU
+  # crosses 70%, so steady-state never sits at limit.
   targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
+  # Memory: capped at 75% so the chart never sits a working set right at the
+  # OOM-kill cliff (limit=768Mi). The tests are CPU-bound; this is a safety
+  # net for the .NET GC's working-set drift under sustained load.
+  targetMemoryUtilizationPercentage: 75
+  # Make HPA reactive enough to actually scale inside a 5-minute load test.
+  # Default scaleUp stabilization is 0s but the policies are conservative
+  # (15% per 60s); we override with a 30s window + a 100%/30s policy so
+  # replicas can double quickly when CPU spikes during ramp.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
 
 podAnnotations: {}
 podLabels: {}
