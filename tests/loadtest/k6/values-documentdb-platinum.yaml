@@ -1,0 +1,60 @@
+# Platinum tier overlay — DocumentDB M40 (4 vCPU, HA on, primary + standby).
+#
+# Apply with:
+#   helm upgrade --install hex-scaffold ./deploy/helm/hex-scaffold \
+#     -n hex-scaffold \
+#     -f tests/loadtest/k6/values-documentdb-platinum.yaml \
+#     --set secrets.mongoConnectionString='<from secret>'
+
+features:
+  inbound: rest
+  outbound: rest
+  persistence: mongo
+
+application:
+  mongoDatabaseName: "hex-scaffold"
+  environment: Production
+
+migrations:
+  enabled: false
+
+# Platinum app profile — 8 base replicas, HPA scales to 24 to give the M40
+# headroom to actually be exercised (4 vCPU = ~16-32k ops/sec ceiling on the
+# primary, replication doubles it).
+replicaCount: 8
+resources:
+  requests:
+    cpu: 80m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 768Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 8
+  maxReplicas: 24
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+
+rateLimit:
+  permitLimit: 100000
+  windowSeconds: 60
+  queueLimit: 0

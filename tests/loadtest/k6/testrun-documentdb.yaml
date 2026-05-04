@@ -1,0 +1,40 @@
+# k6-operator TestRun manifest — DocumentDB metal-tier sweep.
+#
+# This is a TEMPLATE — the runner script (loadtest-documentdb.sh) substitutes
+# __NAMESPACE__ and __TIER__ at apply time.
+#
+# Mount the load script from a ConfigMap so the operator's runner pods pick
+# it up without needing a custom image.
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: hex-scaffold-documentdb-loadtest
+spec:
+  # Distribute the scenario across 6 k6 runners. Aggregate RPS = per-runner
+  # arrival × 6.
+  parallelism: 6
+  script:
+    configMap:
+      name: hex-scaffold-loadtest
+      file: rest-api-loadtest-documentdb.js
+  runner:
+    # Pin runner pods to the dedicated load-generation nodepool so the k6
+    # workload doesn't compete for CPU with the system / app nodepools.
+    nodeSelector:
+      agentpool: nodepool3
+    env:
+      - name: BASE_URL
+        value: "http://hex-scaffold.__NAMESPACE__.svc:80"
+      # TIER selects the per-metal arrival-rate ramp from the script's
+      # `profiles` table (bronze | silver | gold | platinum).
+      - name: TIER
+        value: "__TIER__"
+    # Same sizing rationale as the Postgres testrun — 2 runners per
+    # Standard_D2s_v6 (2 vCPU) node after AKS system DaemonSet overhead.
+    resources:
+      requests: { cpu: 600m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 1Gi  }
+  arguments: >-
+    --summary-export=/tmp/summary.json
+    --tag testid=hex-scaffold-documentdb-__TIER__
