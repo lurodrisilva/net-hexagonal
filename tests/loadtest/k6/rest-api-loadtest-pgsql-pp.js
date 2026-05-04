@@ -91,17 +91,18 @@ export const options = (() => {
         exec: "crudFlow",
         startRate: 5,
         timeUnit: "1s",
-        preAllocatedVUs: 1200,
-        // maxVUs: 200,
-        maxVUs: 2200,
+        preAllocatedVUs: 2000,
+        // Gold profile (DB = pgsql-pp-gold, D4ds_v5 GP, 4 vCPU, 6000 IOPS,
+        // 500 MB/s, Premium SSD v2): IOPS budget is ~50× Silver's, so the
+        // binding metric will almost certainly shift to CPU (4 vCPU). Push
+        // arrival rate hard enough that DB CPU lands in the 60–80% band.
+        maxVUs: 3000,
         stages: [
-          { target: 200,  duration: "30s" },   // warmup
-          // { target: 50,  duration: "1m"  },   // steady
-          { target: 1400,  duration: "1m"  },   // steady
-          // { target: 150, duration: "1m"  },   // peak
-          { target: 2000, duration: "1m"  },   // peak
-          { target: 600,  duration: "30s" },   // drain
-          { target: 0,   duration: "15s" },
+          { target: 300,  duration: "30s" },   // warmup
+          { target: 800,  duration: "1m"  },   // steady
+          { target: 1500, duration: "3m"  },   // peak (≈9000 RPS aggregate × 6 runners — first run undershot at 800)
+          { target: 300,  duration: "30s" },   // drain
+          { target: 0,    duration: "15s" },
         ],
       },
       // Read-heavy overlay. List is cursor-paginated — we just hit the
@@ -131,7 +132,7 @@ function thresholds() {
     "golden_errors_rate":                   ["rate<0.01"],  // <1% real failures
     "golden_throttled_rate":                ["rate<0.50"],
     "golden_traffic_total_requests":        ["count>500"],
-    "golden_saturation_concurrent_vus":     ["p(95)<180"],
+    "golden_saturation_concurrent_vus":     ["p(95)<2500"],
   };
 }
 
