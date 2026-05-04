@@ -98,7 +98,7 @@ export const options = (() => {
     bronze:   { peak: 100,  pre: 200,  max: 400  },  // M10, no HA
     silver:   { peak: 250,  pre: 400,  max: 800  },  // M20, no HA (M20 doesn't support HA)
     gold:     { peak: 600,  pre: 1000, max: 1800 },  // M30, HA on
-    platinum: { peak: 1500, pre: 2000, max: 3000 },  // M40, HA on
+    platinum: { peak: 3000, pre: 4000, max: 6000 },  // M50, HA on (was 1500/2000/3000 for M40)
   };
   const p = profiles[tier] || profiles.bronze;
 
