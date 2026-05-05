@@ -12,6 +12,12 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
     <PackageVersion Include="MongoDB.Driver" Version="3.4.0" />
+    <!-- ActivitySource that emits MongoDB command spans for the OTel pipeline. -->
+    <!-- v3.0.0 declares MongoDB.Driver compatibility range [3.0.0, 4.0.0) and -->
+    <!-- net10.0 target framework — matches our Driver 3.4.0 pin. ActivitySource -->
+    <!-- name is "MongoDB.Driver.Core.Extensions.DiagnosticSources" (subscribed -->
+    <!-- in ObservabilityConfig.cs via .AddSource). -->
+    <PackageVersion Include="MongoDB.Driver.Core.Extensions.DiagnosticSources" Version="3.0.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageVersion Include="StackExchange.Redis" Version="2.8.37" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />

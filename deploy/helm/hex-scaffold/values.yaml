@@ -258,3 +258,25 @@ observability:
   # Tornadoes the four golden signals (latency/traffic/errors/saturation)
   # into the Application Insights "customMetrics" table via the runtime and
   # HTTP/ASP.NET Core instrumentations that are wired in code.
+
+  # OTel TracerProvider sampler. ParentBased(TraceIdRatio) — root traces
+  # sampled at this ratio, children inherit the parent's decision. 1.0 = full
+  # fidelity (production default); the aks-test loadtest overlay drops it to
+  # 0.1 to keep AI ingest under the cap.
+  sampling:
+    tracesRatio: 1.0
+  # Serilog level overlay. Defaults match production. The loadtest overlay
+  # lowers root to Warning (per-event LogInformation in repositories blows
+  # the AI cap) but keeps the consumer at Information so failures stay visible.
+  logging:
+    rootLevel: Information
+    overrides:
+      "Hex.Scaffold.Adapters.Inbound.Messaging.AccountEventConsumer": Information
+
+# Classic Microsoft.ApplicationInsights.AspNetCore SDK knobs. The classic SDK
+# drives Live Metrics (QuickPulse) and has its own sampling stage independent
+# of the OTel TracerProvider above. The default 5 items/s is the framework
+# default; the aks-test loadtest overlay raises this to 50 so per-pod
+# QuickPulse capacity matches the 8-pod / 24k events-per-second Platinum tier.
+classicSdk:
+  maxTelemetryItemsPerSecond: 5

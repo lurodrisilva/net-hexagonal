@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------------------
+# values-aks-test-loadtest.yaml
+#
+# Loadtest overlay for the aks-test cluster (Kafka inbound adapter).
+# Applied on top of values.yaml + a per-tier overlay
+# (values-loadtest-kafka-{silver|gold|platinum}.yaml — added in Phase 3).
+#
+# Plan reference: .omc/plans/kafka-loadtest-plan.md §4.2.2.
+#
+# Install pattern (from §4.2.2):
+#   helm upgrade hex-scaffold deploy/helm/hex-scaffold \
+#     -f deploy/helm/hex-scaffold/values-aks-test-loadtest.yaml \
+#     -f deploy/helm/hex-scaffold/values-loadtest-kafka-<tier>.yaml \
+#     --set-string secrets.appInsightsConnectionString="$AI_CONN" \
+#     --set-string secrets.mongoConnectionString="$DOCDB_CONN" \
+#     --set features.persistence=<repo> \
+#     --set kafka.inboundTopic=v2.core.accounts.loadtest.<tier>.<short-repo>
+# ---------------------------------------------------------------------------
+
+# §4.2.2 — secret placeholders. Real values flow via --set-string at install
+# time so connection strings never enter the values file or git history.
+secrets:
+  appInsightsConnectionString: ""
+  # mongoConnectionString / postgresConnectionString remain at the values.yaml
+  # default; per-run --set-string overrides them when targeting DocumentDB.
+
+# §3.6 — adapter selection. Outbound is REST so the application binds
+# NoOpEventPublisher (eliminates Kafka producer fan-out + dual-publish bug
+# during the loadtest). Redis off because the Platinum tier saturates Redis
+# DEL/s before saturating PostgreSQL.
+features:
+  inbound: kafka
+  outbound: rest
+  persistence: postgres   # overridden per-run via --set features.persistence
+  redis: false
+
+# §4.2.4 — sampling + log level (drives ~10–15 GB total ingest across 6 runs).
+observability:
+  sampling:
+    # OTel TracerProvider ratio (ParentBased(TraceIdRatio)). 0.1 = 10% of
+    # root traces sampled; child spans inherit the decision. See US-003.
+    tracesRatio: 0.1
+  logging:
+    # Serilog root level. Per-event LogInformation calls in the consumer +
+    # repositories would dominate ingest at default Information.
+    rootLevel: Warning
+    overrides:
+      # Keep failures + rare events visible on the consumer hot path.
+      "Hex.Scaffold.Adapters.Inbound.Messaging.AccountEventConsumer": Information
+
+# §4.2.4 — classic AI SDK adaptive sampling. The OTel sampler above governs
+# the OTel pipeline; the classic SDK has its own sampling stage that drives
+# QuickPulse / Live Metrics, so it must be tuned independently.
+classicSdk:
+  # Per-pod ceiling — protects the QuickPulse 1-second control channel from
+  # being overwhelmed at Platinum (~24k events/s × 8 pods).
+  maxTelemetryItemsPerSecond: 50
+
+# §4.2.5 — cardinality guard for inbound_event_processing_duration_ms.
+# The OTel View is configured in code (see US-004 in ObservabilityConfig.cs);
+# this block is informational so the overlay file documents the contract
+# the application enforces.
+metrics:
+  views:
+    inboundEventDuration:
+      # Drops cloud_RoleInstance and any other auto-attached tags before
+      # export. AI Metrics will still multiply the exported series by
+      # cloud_RoleInstance on its side — that's expected.
+      tagKeys:
+        - event_type
+        - tier
+        - repo
