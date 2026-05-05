@@ -1,0 +1,183 @@
+# ---------------------------------------------------------------------------
+# Kafka loadtest cluster — KRaft mode (no ZooKeeper) via Strimzi NodePools.
+#
+# Sized one tier ABOVE the highest test rate (Platinum ~5,300 events/s) so
+# the transport never bottlenecks the application — see plan §2.2.
+#
+# Topology: 3 combined controller+broker nodes (KRaft simplest viable
+# quorum), each on nodepool3 with managed-csi 50Gi persistent storage.
+#
+# Lifecycle: applied once at Phase 5 pre-flight, kept across all 6 runs,
+# deleted at Phase 6 cleanup. Both documents below live in the
+# `messaging-system` namespace where the Strimzi cluster operator runs.
+# ---------------------------------------------------------------------------
+
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: hex-scaffold-loadtest-pool
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+spec:
+  replicas: 3
+  # Combined role — each node serves the KRaft controller quorum AND the
+  # broker workload. Acceptable for loadtest scale; production would split
+  # into dedicated controller + broker pools.
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 50Gi
+    class: managed-csi
+    deleteClaim: true
+  resources:
+    requests:
+      cpu: "1500m"
+      memory: 4Gi
+    limits:
+      cpu: "2000m"
+      memory: 6Gi
+  # Pin to nodepool3 so brokers + the application + k6 runners share the
+  # same underlay network — keeps loadtest latency measurements free of
+  # cross-nodepool hops.
+  template:
+    pod:
+      metadata:
+        labels:
+          app.kubernetes.io/component: loadtest
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: agentpool
+                    operator: In
+                    values:
+                      - nodepool3
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: hex-scaffold-loadtest
+  namespace: messaging-system
+  annotations:
+    # Required for Strimzi to treat this as a KRaft cluster managed by
+    # KafkaNodePool CRs (see KafkaNodePool above). Removing either
+    # annotation reverts the operator to legacy Zookeeper provisioning.
+    strimzi.io/kraft: enabled
+    strimzi.io/node-pools: enabled
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+spec:
+  kafka:
+    version: 3.8.0
+    # replicas + storage are managed by the KafkaNodePool above; the
+    # operator rejects these top-level fields when KRaft + NodePools are
+    # both enabled.
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      # Match the loadtest topic compression to keep producer +
+      # broker on the same codec (lz4 is the topic-level default in
+      # tests/loadtest/kafka/kafkatopics-loadtest.yaml).
+      compression.type: producer
+    # JMX Prometheus exporter — ships broker JVM metrics
+    # (kafka_server_*, BytesInPerSec, RequestHandlerAvgIdlePercent,
+    # UnderReplicatedPartitions, ...) to the Prometheus scrape that
+    # Q2 of tests/loadtest/grafana/kafka-loadtest.json depends on.
+    # Without this block, the broker pods never start the exporter
+    # sidecar and Q2 panels render blank for the entire run cycle.
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: hex-scaffold-loadtest-jmx-config
+          key: kafka-metrics-config.yml
+  # Kafka Exporter — emits kafka_consumergroup_lag (per-partition lag
+  # by consumer-group), the primary consumer-side stop-condition signal
+  # for Phase 5 (Q3 panel + plan §4.3 stop rule). topicRegex + groupRegex
+  # bound the exporter's work to loadtest topics + groups so the
+  # exporter doesn't scan unrelated topics on the cluster.
+  kafkaExporter:
+    topicRegex: "v2\\.core\\.accounts\\.loadtest\\..*"
+    groupRegex: "hex-scaffold-loadtest-.*"
+    enableSaramaLogging: false
+  # Cruise Control — broker-capacity values must mirror the NodePool
+  # resources, otherwise CC's anomaly detection drifts and rebalance
+  # proposals reference the wrong ceilings.
+  cruiseControl:
+    brokerCapacity:
+      cpu: "2000m"
+      inboundNetwork: 10000KB/s
+      outboundNetwork: 10000KB/s
+    resources:
+      requests:
+        cpu: "200m"
+        memory: 512Mi
+      limits:
+        cpu: "500m"
+        memory: 1Gi
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+---
+# JMX exporter pattern set — this is the canonical Strimzi
+# kafka-metrics-config.yml reduced to the metrics the loadtest
+# dashboard reads (Q2 broker quadrant). Keeping the rule set narrow
+# avoids per-mbean cardinality explosion on the Prometheus side.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hex-scaffold-loadtest-jmx-config
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+data:
+  kafka-metrics-config.yml: |
+    lowercaseOutputName: true
+    rules:
+      # Broker throughput — emit the JMX `Count` attribute as a Prometheus
+      # COUNTER (monotonically increasing) so PromQL `rate()` queries in the
+      # dashboard return per-second throughput. Names match the convention
+      # the Q2 dashboard panels (and Grafana's stock Strimzi dashboards)
+      # expect: `_total` suffix, no `persec` infix.
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count
+        name: kafka_server_brokertopicmetrics_bytesin_total
+        type: COUNTER
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count
+        name: kafka_server_brokertopicmetrics_bytesout_total
+        type: COUNTER
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count
+        name: kafka_server_brokertopicmetrics_messagesin_total
+        type: COUNTER
+      # RequestHandler idle percent — drives the §4.3 stop condition (<20%).
+      # OneMinuteRate is a JMX-side moving avg already; keep as GAUGE so the
+      # dashboard threshold panel reads it directly.
+      - pattern: kafka.server<type=KafkaRequestHandlerPool, name=RequestHandlerAvgIdlePercent><>OneMinuteRate
+        name: kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent
+        type: GAUGE
+      # UnderReplicatedPartitions — must stay 0 during a clean run.
+      - pattern: kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value
+        name: kafka_server_replicamanager_underreplicatedpartitions
+        type: GAUGE
+      # Generic catch-all so additional KQL queries during retro can pull
+      # any kafka.server.* mbean without re-deploying. Listed LAST so the
+      # explicit rules above win first-match arbitration. `cache: true`
+      # avoids re-evaluating the regex for every scrape.
+      - pattern: kafka.server<type=(.+), name=(.+)><>(Count|Value|OneMinuteRate)
+        name: kafka_server_$1_$2_$3
+        type: GAUGE
+        cache: true

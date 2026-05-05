@@ -100,7 +100,11 @@ public static class ServiceConfigs
           BootstrapServers = options.BootstrapServers,
           GroupId = options.ConsumerGroupId,
           AutoOffsetReset = AutoOffsetReset.Earliest,
-          EnableAutoCommit = false
+          EnableAutoCommit = false,
+          // MaxPollRecords → QueuedMinMessages: see KafkaOptions.cs comment.
+          // Both fields are tuned per-tier by the loadtest Helm overlays.
+          QueuedMinMessages = options.MaxPollRecords,
+          FetchMinBytes = options.FetchMinBytes,
         };
         return new ConsumerBuilder<string, string>(config).Build();
       });

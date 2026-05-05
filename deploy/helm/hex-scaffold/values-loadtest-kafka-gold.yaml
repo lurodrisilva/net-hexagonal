@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Per-tier loadtest overlay — Gold
+#
+# Plan reference: .omc/plans/kafka-loadtest-plan.md §5.2.
+# ---------------------------------------------------------------------------
+
+replicaCount: 4
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: false
+
+kafka:
+  # Gold: medium fetch batching — broker round-trip starts to matter at the
+  # ~2,500 events/s ceiling, so prefetch + min-bytes both step up.
+  maxPollRecords: 250
+  fetchMinBytes: 32768

@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Per-tier loadtest overlay — Platinum
+#
+# Plan reference: .omc/plans/kafka-loadtest-plan.md §5.2.
+# ---------------------------------------------------------------------------
+
+replicaCount: 8
+
+resources:
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+  limits:
+    cpu: 4000m
+    memory: 4Gi
+
+autoscaling:
+  enabled: false
+
+kafka:
+  # Platinum: aggressive fetch batching — at ~5,300 events/s every fetch
+  # round-trip the consumer skips translates to ~5ms saved per batch.
+  maxPollRecords: 500
+  fetchMinBytes: 65536

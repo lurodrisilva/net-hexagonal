@@ -49,6 +49,10 @@ repos:
     rev: v4.6.0
     hooks:
       - id: check-yaml
+        # --allow-multiple-documents lets multi-doc YAML through (Strimzi
+        # Kafka cluster + KafkaTopic CR bundles in tests/loadtest/kafka/
+        # ship as one file with `---` separators).
+        args: ['--allow-multiple-documents']
         files: ^.*\.(ya?ml)$
         exclude: |
           (?x)^(

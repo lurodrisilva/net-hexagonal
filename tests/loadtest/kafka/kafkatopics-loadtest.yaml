@@ -1,0 +1,135 @@
+# ---------------------------------------------------------------------------
+# Six KafkaTopic CRs — one per (tier × repo) combination, isolated so any
+# one run's offset commits / lag never bleeds into another tier's measurement.
+#
+# Plan reference: .omc/plans/kafka-loadtest-plan.md §5.3.
+#
+# Topology (uniform across all six):
+#   partitions: 12         — 4× the broker count (3) so the consumer group
+#                            with up to 8 pods at Platinum still has spare
+#                            partitions for parallelism without idle pods.
+#   replicas:   3          — RF=3 matches the 3-broker NodePool; survives
+#                            one broker rolling without producer fail.
+#   retention.ms:    1h    — loadtest payload purges before any subsequent
+#                            run picks the same partition's offset.
+#   compression.type: lz4  — lowest CPU overhead at line-rate; matches the
+#                            k6 producer's compression knob.
+#   segment.bytes:   512MB — fewer rolling segments at Platinum throughput
+#                            keeps PageCache thrash off the hot path.
+#
+# Lifecycle: applied once at Phase 5 pre-flight, kept across all 6 runs,
+# deleted at Phase 6 cleanup.
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-silver-pg
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: silver
+    loadtest.repo: pg
+spec:
+  topicName: v2.core.accounts.loadtest.silver.pg
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-silver-mongo
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: silver
+    loadtest.repo: mongo
+spec:
+  topicName: v2.core.accounts.loadtest.silver.mongo
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-gold-pg
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: gold
+    loadtest.repo: pg
+spec:
+  topicName: v2.core.accounts.loadtest.gold.pg
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-gold-mongo
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: gold
+    loadtest.repo: mongo
+spec:
+  topicName: v2.core.accounts.loadtest.gold.mongo
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-platinum-pg
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: platinum
+    loadtest.repo: pg
+spec:
+  topicName: v2.core.accounts.loadtest.platinum.pg
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: v2-core-accounts-loadtest-platinum-mongo
+  namespace: messaging-system
+  labels:
+    strimzi.io/cluster: hex-scaffold-loadtest
+    app.kubernetes.io/component: loadtest
+    loadtest.tier: platinum
+    loadtest.repo: mongo
+spec:
+  topicName: v2.core.accounts.loadtest.platinum.mongo
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: "3600000"
+    compression.type: "lz4"
+    segment.bytes: "536870912"
