@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Api.Options;
+﻿namespace Hex.Scaffold.Api.Options;
 
 /// <summary>
 /// Runtime selector for which hexagonal adapters are wired up. Populated from

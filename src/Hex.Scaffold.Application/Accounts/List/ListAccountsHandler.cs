@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Application.Accounts.List;
+﻿namespace Hex.Scaffold.Application.Accounts.List;
 
 public sealed class ListAccountsHandler(IListAccountsQueryService _service)
   : IQueryHandler<ListAccountsQuery, Result<AccountListResult>>

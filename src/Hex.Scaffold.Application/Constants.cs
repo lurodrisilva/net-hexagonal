@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Application;
+﻿namespace Hex.Scaffold.Application;
 
 public static class Constants
 {

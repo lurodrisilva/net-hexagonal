@@ -1,4 +1,4 @@
-using Hex.Scaffold.Application.Accounts;
+﻿using Hex.Scaffold.Application.Accounts;
 using Hex.Scaffold.Application.Accounts.List;
 
 namespace Hex.Scaffold.Adapters.Inbound.Api.Accounts;

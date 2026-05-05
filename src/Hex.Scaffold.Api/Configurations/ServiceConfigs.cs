@@ -1,6 +1,6 @@
-using Confluent.Kafka;
-using Scrutor;
+﻿using Confluent.Kafka;
 using Hex.Scaffold.Adapters.Inbound.Messaging;
+using Hex.Scaffold.Adapters.Inbound.Options;
 using Hex.Scaffold.Adapters.Outbound.Http;
 using Hex.Scaffold.Adapters.Outbound.Messaging;
 using Hex.Scaffold.Adapters.Persistence.Common;
@@ -8,6 +8,7 @@ using Hex.Scaffold.Adapters.Persistence.Extensions;
 using Hex.Scaffold.Api.Options;
 using Hex.Scaffold.Domain.Ports.Outbound;
 using Microsoft.Extensions.Http.Resilience;
+using Scrutor;
 
 namespace Hex.Scaffold.Api.Configurations;
 
@@ -143,7 +144,7 @@ public static class ServiceConfigs
            t.Name.EndsWith("Publisher") ||
            t.Name.EndsWith("Client"))
           && !(features.PostgresEnabled && t.FullName!.Contains(".MongoDb."))
-          && !(features.MongoEnabled    && t.FullName!.Contains(".PostgreSql."))))
+          && !(features.MongoEnabled && t.FullName!.Contains(".PostgreSql."))))
       .UsingRegistrationStrategy(RegistrationStrategy.Skip)
       .AsImplementedInterfaces()
       .WithScopedLifetime());

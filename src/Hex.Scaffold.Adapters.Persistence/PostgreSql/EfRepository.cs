@@ -1,4 +1,4 @@
-using Hex.Scaffold.Adapters.Persistence.Common;
+﻿using Hex.Scaffold.Adapters.Persistence.Common;
 
 namespace Hex.Scaffold.Adapters.Persistence.PostgreSql;
 

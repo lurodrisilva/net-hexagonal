@@ -1,4 +1,4 @@
-using System.Threading.RateLimiting;
+﻿using System.Threading.RateLimiting;
 using Hex.Scaffold.Api.Options;
 using Microsoft.AspNetCore.RateLimiting;
 

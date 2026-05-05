@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hex.Scaffold.Domain.Ports.Outbound;
 using StackExchange.Redis;
 

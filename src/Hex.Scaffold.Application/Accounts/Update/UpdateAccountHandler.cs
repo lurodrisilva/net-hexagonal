@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 using Hex.Scaffold.Domain.AccountAggregate.Specifications;
 
 namespace Hex.Scaffold.Application.Accounts.Update;
@@ -19,14 +19,14 @@ public sealed class UpdateAccountHandler(
     if (account is null) return Result<AccountDto>.NotFound();
 
     account.ApplyUpdate(
-      displayName:           command.DisplayName,
-      contactEmail:          command.ContactEmail,
-      contactPhone:          command.ContactPhone,
+      displayName: command.DisplayName,
+      contactEmail: command.ContactEmail,
+      contactPhone: command.ContactPhone,
       appliedConfigurations: command.AppliedConfigurations,
-      configurationJson:     command.ConfigurationJson,
-      identityJson:          command.IdentityJson,
-      defaultsJson:          command.DefaultsJson,
-      metadataJson:          command.MetadataJson);
+      configurationJson: command.ConfigurationJson,
+      identityJson: command.IdentityJson,
+      defaultsJson: command.DefaultsJson,
+      metadataJson: command.MetadataJson);
 
     await _repository.UpdateAsync(account, cancellationToken);
 

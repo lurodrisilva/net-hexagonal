@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 

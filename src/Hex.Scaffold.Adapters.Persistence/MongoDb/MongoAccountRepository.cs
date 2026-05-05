@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 using MongoDB.Driver;
 
 namespace Hex.Scaffold.Adapters.Persistence.MongoDb;

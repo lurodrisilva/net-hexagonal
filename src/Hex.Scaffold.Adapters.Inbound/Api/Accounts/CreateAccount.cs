@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hex.Scaffold.Application.Accounts;
 using Hex.Scaffold.Application.Accounts.Create;
 
@@ -36,9 +36,9 @@ public class CreateAccount(IMediator mediator)
       ContactPhone: request.ContactPhone,
       AppliedConfigurations: AccountFieldHelpers.ToAppliedConfigs(request.AppliedConfigurations),
       ConfigurationJson: SerializeOrNull(request.Configuration),
-      IdentityJson:      SerializeOrNull(request.Identity),
-      DefaultsJson:      SerializeOrNull(request.Defaults),
-      MetadataJson:      SerializeOrNull(request.Metadata));
+      IdentityJson: SerializeOrNull(request.Identity),
+      DefaultsJson: SerializeOrNull(request.Defaults),
+      MetadataJson: SerializeOrNull(request.Metadata));
 
     var result = await mediator.Send(command, ct);
     if (result.IsSuccess)

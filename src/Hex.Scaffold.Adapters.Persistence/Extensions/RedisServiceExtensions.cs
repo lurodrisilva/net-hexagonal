@@ -1,4 +1,4 @@
-using Hex.Scaffold.Adapters.Persistence.Redis;
+﻿using Hex.Scaffold.Adapters.Persistence.Redis;
 using Hex.Scaffold.Domain.Ports.Outbound;
 using StackExchange.Redis;
 

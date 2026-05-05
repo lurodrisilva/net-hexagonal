@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Diagnostics;
+﻿using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Hex.Scaffold.Adapters.Persistence.PostgreSql;
 

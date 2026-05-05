@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Domain.AccountAggregate.Specifications;
+﻿namespace Hex.Scaffold.Domain.AccountAggregate.Specifications;
 
 public sealed class AccountByIdSpec : Specification<Account>
 {

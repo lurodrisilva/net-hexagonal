@@ -1,4 +1,4 @@
-global using Hex.Scaffold.Domain.Common;
+﻿global using Hex.Scaffold.Domain.Common;
 global using Mediator;
 global using Microsoft.EntityFrameworkCore;
 global using Microsoft.EntityFrameworkCore.Metadata.Builders;

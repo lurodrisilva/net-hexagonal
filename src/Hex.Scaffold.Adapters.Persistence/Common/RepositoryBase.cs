@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.Common;
+﻿using Hex.Scaffold.Domain.Common;
 
 namespace Hex.Scaffold.Adapters.Persistence.Common;
 

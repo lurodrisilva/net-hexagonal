@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Domain.Common;
+﻿namespace Hex.Scaffold.Domain.Common;
 
 public interface IReadRepository<T> where T : class, IAggregateRoot
 {

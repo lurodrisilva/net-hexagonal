@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Hex.Scaffold.Adapters.Persistence.Common;
 using Hex.Scaffold.Adapters.Persistence.MongoDb;
 using Hex.Scaffold.Application.Accounts.List;

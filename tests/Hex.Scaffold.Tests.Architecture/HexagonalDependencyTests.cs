@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace Hex.Scaffold.Tests.Architecture;
 
@@ -112,6 +112,64 @@ public class HexagonalDependencyTests
 
     result.IsSuccessful.ShouldBeTrue(
       $"Persistence depends on forbidden: {string.Join(", ", result.FailingTypeNames ?? [])}");
+  }
+
+  [Fact]
+  [Trait("Category", "Architecture")]
+  public void CreateWithExternalId_LivesInDomainLayer()
+  {
+    // The replay-safe factory used by the Kafka inbound load tests must live
+    // in the Domain layer — it's a domain concern (aggregate construction
+    // with a caller-supplied identity), not an Application or Adapter one.
+    var method = typeof(Hex.Scaffold.Domain.AccountAggregate.Account)
+      .GetMethod(
+        nameof(Hex.Scaffold.Domain.AccountAggregate.Account.CreateWithExternalId),
+        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
+    method.ShouldNotBeNull("Account.CreateWithExternalId factory is missing");
+    method!.DeclaringType!.Assembly.ShouldBe(DomainAssembly,
+      "CreateWithExternalId must be declared in the Domain assembly");
+  }
+
+  [Fact]
+  [Trait("Category", "Architecture")]
+  public void Account_Create_And_CreateWithExternalId_Both_Raise_AccountCreatedEvent()
+  {
+    // Both factories must register exactly one AccountCreatedEvent so the
+    // PR #20 invariant + at-least-once delivery semantics behave identically
+    // regardless of which path was used to construct the aggregate.
+    var viaCreate = Hex.Scaffold.Domain.AccountAggregate.Account.Create(
+      livemode: false,
+      displayName: "test",
+      contactEmail: null,
+      contactPhone: null,
+      appliedConfigurations: null,
+      configurationJson: null,
+      identityJson: null,
+      defaultsJson: null,
+      metadataJson: null);
+
+    var externalId = Hex.Scaffold.Domain.AccountAggregate.AccountId.From(
+      Hex.Scaffold.Domain.AccountAggregate.AccountId.Prefix + "TESTLOADTEST0000000001");
+    var viaExternal = Hex.Scaffold.Domain.AccountAggregate.Account.CreateWithExternalId(
+      id: externalId,
+      livemode: false,
+      displayName: "test",
+      contactEmail: null,
+      contactPhone: null,
+      appliedConfigurations: null,
+      configurationJson: null,
+      identityJson: null,
+      defaultsJson: null,
+      metadataJson: null);
+
+    viaCreate.DomainEvents.Count.ShouldBe(1, "Account.Create must raise exactly one event");
+    viaCreate.DomainEvents[0].ShouldBeOfType<Hex.Scaffold.Domain.AccountAggregate.Events.AccountCreatedEvent>();
+
+    viaExternal.DomainEvents.Count.ShouldBe(1, "CreateWithExternalId must raise exactly one event");
+    viaExternal.DomainEvents[0].ShouldBeOfType<Hex.Scaffold.Domain.AccountAggregate.Events.AccountCreatedEvent>();
+
+    viaExternal.Id.ShouldBe(externalId, "CreateWithExternalId must honour the supplied id (PR #20 invariant)");
   }
 
   [Fact]

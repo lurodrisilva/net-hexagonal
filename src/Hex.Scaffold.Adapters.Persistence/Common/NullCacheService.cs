@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.Ports.Outbound;
+﻿using Hex.Scaffold.Domain.Ports.Outbound;
 
 namespace Hex.Scaffold.Adapters.Persistence.Common;
 

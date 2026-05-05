@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate.Events;
+﻿using Hex.Scaffold.Domain.AccountAggregate.Events;
 using Hex.Scaffold.Domain.Ports.Outbound;
 
 namespace Hex.Scaffold.Domain.AccountAggregate.Handlers;
@@ -12,7 +12,8 @@ public sealed class AccountEventPublishHandler(
   ICacheService _cacheService,
   ILogger<AccountEventPublishHandler> _logger)
   : INotificationHandler<AccountCreatedEvent>,
-    INotificationHandler<AccountUpdatedEvent>
+    INotificationHandler<AccountUpdatedEvent>,
+    INotificationHandler<AccountDeletedEvent>
 {
   // Topic mirrors the Stripe v2 webhook event-name space; the consumer side
   // (when inbound=kafka) embeds the event type in the message body.
@@ -32,6 +33,15 @@ public sealed class AccountEventPublishHandler(
       "Publishing v2.core.account.updated for {AccountId}", notification.Account.Id);
     await _eventPublisher.PublishAsync(KafkaTopic, notification, cancellationToken);
     await _cacheService.RemoveAsync($"account:{notification.Account.Id.Value}", cancellationToken);
+    await _cacheService.RemoveAsync("accounts:list", cancellationToken);
+  }
+
+  public async ValueTask Handle(AccountDeletedEvent notification, CancellationToken cancellationToken)
+  {
+    _logger.LogInformation(
+      "Publishing v2.core.account.deleted for {AccountId}", notification.Id);
+    await _eventPublisher.PublishAsync(KafkaTopic, notification, cancellationToken);
+    await _cacheService.RemoveAsync($"account:{notification.Id.Value}", cancellationToken);
     await _cacheService.RemoveAsync("accounts:list", cancellationToken);
   }
 }
