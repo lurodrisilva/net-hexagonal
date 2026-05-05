@@ -1,0 +1,47 @@
+# k6-operator TestRun — Kafka inbound loadtest, DocumentDB (Mongo) repository.
+#
+# Phase 4 of .omc/plans/kafka-loadtest-plan.md §6 (revision 4).
+#
+# Sister manifest to tests/loadtest/k6/testrun-kafka-pg.yaml — only
+# differences are metadata.name, env REPO=mongo, and the testid tag. All
+# other fields (parallelism, image, nodeSelector, resources, ConfigMap
+# reference, TIER/RUNID env shape) match the PG manifest byte-for-byte.
+# See testrun-kafka-pg.yaml for full pre-req + apply documentation.
+#
+# Apply (Phase 5 per-run):
+#   sed -e "s/__TIER__/silver/" -e "s/__RUNID__/$(date +%s)/" \
+#     tests/loadtest/k6/testrun-kafka-mongo.yaml | kubectl apply -f -
+#   kubectl get testruns -n testing-system -w
+#   kubectl logs -n testing-system -l k6_cr=hex-scaffold-kafka-loadtest-mongo -f
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: hex-scaffold-kafka-loadtest-mongo
+  namespace: testing-system
+  labels:
+    app.kubernetes.io/component: loadtest
+    app.kubernetes.io/part-of: hex-scaffold
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: hex-scaffold-kafka-loadtest
+      file: kafka-account-events-loadtest.js
+  runner:
+    image: mostafamoradian/xk6-kafka:latest
+    nodeSelector:
+      agentpool: nodepool3
+    env:
+      - name: TIER
+        value: "__TIER__"
+      - name: REPO
+        value: "mongo"
+      - name: RUNID
+        value: "__RUNID__"
+    resources:
+      requests: { cpu: 600m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 1Gi   }
+  arguments: >-
+    --summary-export=/tmp/summary.json
+    --tag testid=hex-scaffold-kafka-loadtest-mongo
