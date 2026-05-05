@@ -49,6 +49,12 @@ secrets:
   kafkaConsumerGroupId: "hex-scaffold-group"
   # External REST API the outbound HTTP adapter targets (always registered)
   externalApiBaseUrl: "https://httpbin.org"
+
+kafka:
+  # Inbound topic consumed by AccountEventConsumer (features.inbound=kafka).
+  # Override per-environment via Helm --set or a values overlay so load-test
+  # runs can target isolated topics without touching the default prod topic.
+  inboundTopic: "v2.core.accounts"
   # Azure Application Insights connection string. Leave empty to disable the
   # Azure Monitor exporter (the OTLP pipeline still runs). Inject via a real
   # SecretProviderClass / ExternalSecret in production.

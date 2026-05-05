@@ -45,6 +45,7 @@ data:
 
   # --- Kafka consumer group (producer bootstrap is in the Secret) ----------
   Kafka__ConsumerGroupId:   {{ .Values.secrets.kafkaConsumerGroupId | quote }}
+  Kafka__InboundTopic:      {{ .Values.kafka.inboundTopic | quote }}
 
   # --- Rate limiter (fixed window, per-IP) ----------------------------------
   RateLimit__PermitLimit:    {{ .Values.rateLimit.permitLimit    | quote }}

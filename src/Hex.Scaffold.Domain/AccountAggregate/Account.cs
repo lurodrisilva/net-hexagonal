@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Hex.Scaffold.Domain.AccountAggregate.Events;
 
 namespace Hex.Scaffold.Domain.AccountAggregate;
@@ -118,6 +118,45 @@ public class Account : EntityBase<Account, AccountId>, IAggregateRoot
     return account;
   }
 
+  // Replay-safe factory for at-least-once event delivery (Kafka inbound
+  // load tests + future event-sourced rebuild). Same shape as Create() but
+  // the caller supplies the AccountId. PR #20's invariant is preserved —
+  // the AccountId is fully initialized before the aggregate ctor returns,
+  // so EF's IdentityMap.Add never sees a default(AccountId).
+  public static Account CreateWithExternalId(
+    AccountId id,
+    bool livemode,
+    string? displayName,
+    string? contactEmail,
+    string? contactPhone,
+    IEnumerable<AppliedConfiguration>? appliedConfigurations,
+    string? configurationJson,
+    string? identityJson,
+    string? defaultsJson,
+    string? metadataJson,
+    DateTime? createdUtc = null)
+  {
+    var account = new Account(
+      id: id,
+      livemode: livemode,
+      created: createdUtc ?? DateTime.UtcNow,
+      closed: false,
+      displayName: displayName,
+      contactEmail: contactEmail,
+      contactPhone: contactPhone,
+      dashboard: DeriveDashboard(appliedConfigurations),
+      appliedConfigurations: (appliedConfigurations ?? []).Select(c => c.Value).Distinct().ToList(),
+      configurationJson: configurationJson,
+      identityJson: identityJson,
+      defaultsJson: defaultsJson,
+      requirementsJson: null,
+      futureRequirementsJson: null,
+      metadataJson: metadataJson);
+
+    account.RegisterDomainEvent(new AccountCreatedEvent(account));
+    return account;
+  }
+
   // Stripe's update endpoint accepts a partial mutation — every field is
   // optional, omission means "leave alone". We model that with `Maybe<T>`-
   // shaped (HasValue, Value) tuples so callers can pass null-as-explicit
@@ -182,6 +221,15 @@ public class Account : EntityBase<Account, AccountId>, IAggregateRoot
     }
 
     if (changed) RegisterDomainEvent(new AccountUpdatedEvent(this));
+    return this;
+  }
+
+  // Registers an AccountDeletedEvent so the domain-event pipeline fires
+  // before the row is physically removed by the handler. Called by
+  // DeleteAccountHandler immediately before _repo.DeleteAsync().
+  public Account MarkDeleted()
+  {
+    RegisterDomainEvent(new AccountDeletedEvent(Id, DateTimeOffset.UtcNow));
     return this;
   }
 

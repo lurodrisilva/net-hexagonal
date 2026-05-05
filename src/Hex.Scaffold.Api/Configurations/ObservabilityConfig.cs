@@ -1,4 +1,4 @@
-using Azure.Monitor.OpenTelemetry.Exporter;
+﻿using Azure.Monitor.OpenTelemetry.Exporter;
 using Hex.Scaffold.Domain.Common;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -99,7 +99,11 @@ public static class ObservabilityConfig
         metrics
           .AddAspNetCoreInstrumentation()
           .AddHttpClientInstrumentation()
-          .AddRuntimeInstrumentation();
+          .AddRuntimeInstrumentation()
+          // Custom histogram for Kafka inbound end-to-end latency
+          // (poll → command-handler completion). Drives the 200ms p95
+          // stop condition on Kafka loadtest runs (see kafka-loadtest-plan §3.5).
+          .AddMeter("Hex.Scaffold.Adapters.Inbound.Messaging");
 
         if (azureMonitorEnabled)
         {
@@ -145,12 +149,12 @@ public static class ObservabilityConfig
       {
         o.ConnectionString = appInsightsConnectionString;
         // Required for QuickPulse to surface the four golden signals.
-        o.EnableRequestTrackingTelemetryModule    = true;
+        o.EnableRequestTrackingTelemetryModule = true;
         o.EnableDependencyTrackingTelemetryModule = true;
         // EventCounter is the cross-platform .NET runtime counter source
         // (CPU, GC, exception count, working set). PerformanceCounter is
         // Windows-only and a no-op in our chiseled Linux runtime.
-        o.EnableEventCounterCollectionModule       = true;
+        o.EnableEventCounterCollectionModule = true;
         o.EnablePerformanceCounterCollectionModule = false;
         // Off — these emit telemetry that does NOT feed Live Metrics and
         // only adds noise to the ingestion pipeline.
