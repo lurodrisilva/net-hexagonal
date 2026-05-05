@@ -1,0 +1,69 @@
+# k6-operator TestRun — Kafka inbound loadtest, PostgreSQL repository.
+#
+# Phase 4 of .omc/plans/kafka-loadtest-plan.md §6 (revision 4).
+#
+# Pre-reqs (Phase 5 pre-flight):
+#   1. testing-system namespace exists
+#        kubectl create namespace testing-system
+#   2. ConfigMap is in sync with the script source-of-truth
+#        kubectl create configmap hex-scaffold-kafka-loadtest \
+#          -n testing-system \
+#          --from-file=kafka-account-events-loadtest.js=tests/loadtest/k6/kafka-account-events-loadtest.js \
+#          --dry-run=client -o yaml | kubectl apply -f -
+#      (or: kubectl apply -f tests/loadtest/k6/configmap-kafka-script.yaml — ships a baseline
+#       copy of the script so the manifest set is self-contained for one-shot apply.)
+#   3. Six KafkaTopic CRs Ready in messaging-system
+#        kubectl get kafkatopic -n messaging-system | grep loadtest
+#   4. Application Deployment up with the right per-tier Helm overlay
+#        helm upgrade hex-scaffold deploy/helm/hex-scaffold \
+#          -f deploy/helm/hex-scaffold/values-aks-test-loadtest.yaml \
+#          -f deploy/helm/hex-scaffold/values-loadtest-kafka-<tier>.yaml \
+#          --set kafka.inboundTopic=v2.core.accounts.loadtest.<tier>.pg
+#
+# Apply (Phase 5 per-run):
+#   sed -e "s/__TIER__/silver/" -e "s/__RUNID__/$(date +%s)/" \
+#     tests/loadtest/k6/testrun-kafka-pg.yaml | kubectl apply -f -
+#   kubectl get testruns -n testing-system -w
+#   kubectl logs -n testing-system -l k6_cr=hex-scaffold-kafka-loadtest-pg -f
+#
+# spec.parallelism = 1 because per-runner peak rates in the script
+# (silver=500, gold=2500, platinum=5300 events/s) already match plan §7.1
+# tier ceilings. Multiplying by N runners would overshoot — see
+# .omc/progress.txt US-001 for the math.
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: hex-scaffold-kafka-loadtest-pg
+  namespace: testing-system
+  labels:
+    app.kubernetes.io/component: loadtest
+    app.kubernetes.io/part-of: hex-scaffold
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: hex-scaffold-kafka-loadtest
+      file: kafka-account-events-loadtest.js
+  runner:
+    # Stock grafana/k6 lacks the xk6-kafka extension — image override
+    # is required so the runner can `import { Producer } from "k6/x/kafka"`.
+    image: mostafamoradian/xk6-kafka:latest
+    # Pin to the dedicated load-generation nodepool (mirrors testrun-pgsql-pp.yaml).
+    nodeSelector:
+      agentpool: nodepool3
+    env:
+      # Orchestrator (Phase 5 driver script) substitutes both placeholders
+      # via sed before kubectl apply — same pattern as loadtest-pgsql-pp.sh.
+      - name: TIER
+        value: "__TIER__"
+      - name: REPO
+        value: "postgres"
+      - name: RUNID
+        value: "__RUNID__"
+    resources:
+      requests: { cpu: 600m,  memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 1Gi   }
+  arguments: >-
+    --summary-export=/tmp/summary.json
+    --tag testid=hex-scaffold-kafka-loadtest-pg
