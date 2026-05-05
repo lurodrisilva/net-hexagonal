@@ -12,7 +12,7 @@ All runs target the **60–80% saturation band** on the limiting resource. Regio
 | Silver | D2ds_v5 | 2 vCPU / 8 GiB | **~473** | cpu_percent | 47.79% | ⚠️ under (CPU never crossed 60%) | [report](./loadtest-run-2026-05-04-postgresql-silver-db-saturation.md) |
 | Gold | D4ds_v5 | 4 vCPU / 16 GiB | **~2,616** | cpu_percent | 79.35% | ✅ | [report](./loadtest-run-2026-05-04-postgresql-gold-db-saturation.md) |
 | Platinum | D8ds_v5 | 8 vCPU / 32 GiB | **~5,330** | cpu_percent | 64.88% | ✅ | [report](./loadtest-run-2026-05-03-postgresql-platinum-db-saturation.md) |
-| Platinum+ | D16ds_v5 | 16 vCPU / 64 GiB | **~5,107 → ~5,084** (re-test) | cpu_percent | 24.18% → 39.85% | ⚠️ far under (DB over-provisioned; bound by AKS app-tier vCPU, **not** HPA cap nor DB) | [report](./loadtest-run-2026-05-04-postgresql-platinum-plus-db-saturation.md) |
+| Platinum+ | D16ds_v5 | 16 vCPU / 64 GiB | **~5,107 → ~5,084 → ~5,106** (3 runs) | cpu_percent | 24.18% → 39.85% → 24.34% | ⚠️ far under (DB over-provisioned). **3 runs at 3 cluster shapes all yield ~5.1k RPS** — ceiling is upstream of cluster, DB, HPA. Run 3 (nodepool3 expanded) cut p95 latency ~95% with no RPS gain. | [report](./loadtest-run-2026-05-04-postgresql-platinum-plus-db-saturation.md) |
 
 ## DocumentDB (Cosmos for MongoDB vCore) — canonical ladder
 
@@ -38,8 +38,9 @@ The hex-scaffold app pod is the same image across every run; what changes per ti
 | Silver   | **6 / 12**  | `cpu=80m, mem=384Mi`  | `cpu=1000m, mem=768Mi` | App tier never CPU-bound at this run |
 | Gold     | **8 / 16**  | `cpu=80m, mem=384Mi`  | `cpu=1000m, mem=768Mi` | Doubled replicas vs Bronze |
 | Platinum | **4 / 16**  | `cpu=160m, mem=512Mi` | `cpu=1000m, mem=768Mi` | **Higher requests** to reduce HPA churn at peak; lower base replicas because each pod is more capacity-rich |
-| Platinum+ (first run) | **24 / 64** | `cpu=200m, mem=512Mi` | `cpu=1500m, mem=1Gi` | HPA hit max 64/64 with pod CPU at 104% — app tier became the cap before DB even reached the band. |
-| **Platinum+ (re-test, app-tier scale-up)** | **32 / 128** | `cpu=100m, mem=512Mi` | `cpu=2000m, mem=1Gi` | All-nodepool affinity. HPA hit max 128/128 → **same ~5.1k RPS**, latency ~2× higher. AKS app-tier vCPU budget (~22 vCPU) is the real ceiling; DB still at 39.85% CPU. Adding nodes blocked by Azure MCAPS deny policy. |
+| Platinum+ (Run 1) | **24 / 64** | `cpu=200m, mem=512Mi` | `cpu=1500m, mem=1Gi` | HPA hit max 64/64 with pod CPU at 104% — app tier became the cap before DB even reached the band. |
+| Platinum+ (Run 2 — app-tier scale-up) | **32 / 128** | `cpu=100m, mem=512Mi` | `cpu=2000m, mem=1Gi` | All-nodepool affinity. HPA hit 128/128 → **same ~5.1k RPS**, latency ~2× higher. Doubling pods squeezed real CPU per pod (240m). Initial diagnosis: cluster app vCPU budget is the cap. |
+| **Platinum+ (Run 3 — nodepool3 expanded 2→5)** | **32 / 128** | `cpu=100m, mem=512Mi` | `cpu=2000m, mem=1Gi` | Same overlay as Run 2. Cluster app budget tripled (22 → 52 vCPU). HPA hit 128/128. **RPS unchanged at ~5,106** but **p95 latency ~95% lower** (create 26 ms median; list 9 ms). Cluster CPU was *not* the binding constraint after all — ceiling is upstream (k6 offered rate, network path, or app-side serialisation). |
 
 ### DocumentDB (Mongo vCore) runs
 
@@ -62,7 +63,7 @@ Cross-engine note at matched tiers: PG and Mongo runs use **the same replica cou
 | Silver (2 vCPU / ~8 GiB) | D2ds_v5 (2 / 8) | ~473 | M20 (1 / 4) | ~432 | **PG +9.5%** despite 2× vCPU advantage |
 | Gold (4 vCPU / 16 GiB) | D4ds_v5 | ~2,616 | M40 | ~2,553 | ≈ parity (PG +2.5%) |
 | Platinum (8 vCPU / 32 GiB) | D8ds_v5 | ~5,330 | M50 | ~5,147 | ≈ parity (PG +3.6%) |
-| **Platinum+ (16 vCPU / 64 GiB)** | D16ds_v5 | **~5,084** (re-tested with HPA 32/128, no improvement vs first run's ~5,107) | M60 | **~10,050** | **Mongo +97%** — same compute, same app footprint; cross-engine gap is app-CPU efficiency of the driver, not the DB. Doubling PG's HPA cap did not move the number — bound by the AKS cluster's ~22 vCPU app-tier budget, not by HPA. |
+| **Platinum+ (16 vCPU / 64 GiB)** | D16ds_v5 | **~5,107 → ~5,084 → ~5,106** (Run 1/2/3) | M60 | **~10,050** | **Mongo +97%** at the offered ramp. PG sits at a hard ~5,107 RPS ceiling across 3 runs spanning 22 → 52 vCPU of cluster compute. Run 3 (nodepool3 2→5) confirmed the cap is **not** cluster CPU, not HPA, not DB — ceiling is upstream (k6 offered rate / network path / app serialisation). Run 3 dropped PG p95 latency by ~95% with no RPS gain. |
 
 ## Deep Dives by Tier
 
@@ -140,30 +141,40 @@ PG Platinum landed at the lower edge of the band (64.88%) — it could likely pu
 
 ### Platinum+-Tier Deep Dive — PG Platinum+ (D16ds_v5) vs Mongo Platinum+ (M60)
 
-| Metric | PG Platinum+ first run (24 / 64) | **PG Platinum+ re-test (32 / 128)** | Mongo Platinum+ (M60, 24 / 64) |
-|---|---|---|---|
-| Compute | **16 vCPU / 64 GiB** | **16 vCPU / 64 GiB** | **16 vCPU / 64 GiB** |
-| HA | off | off | on (zone-redundant standby) |
-| App replicas (HPA min/max) | **24 / 64** | **32 / 128** | **24 / 64** |
-| Pod requests / limits | `200m/512Mi` / `1500m/1Gi` | **`100m/512Mi` / `2000m/1Gi`** | `200m/512Mi` / `1500m/1Gi` |
-| Affinity | nodepool + nodepool2 | **all 3 pools** (incl. nodepool3, soft pref to 2/3) | nodepool + nodepool2 |
-| Aggregate RPS | **~5,107** | **~5,084 (essentially flat)** | **~10,050** |
-| DB CPU peak | 24.18% (⚠️ far under band) | 39.85% (still under band — momentary spike on conn-pool warmup) | **62.67%** (✅ in 60–80% band) |
-| DB Memory peak | 33.67% | 50.75% | 41.95% |
-| DB active_connections peak | 745 | **4,054** (≈81% of D16ds_v5's ~5 000 ceiling) | n/a |
-| App-side p95 (create / update) | **~220 ms / ~256 ms** | ~417 ms / ~507 ms (latency ~2× higher) | ~640 ms / ~675 ms |
-| HPA scaled to | **64 / 64 (max hit)** | **128 / 128 (max hit)** | **64 / 64 (max hit)** |
-| Saturation verdict | App-HPA-bound | **AKS-cluster-CPU-bound** (~22 vCPU app budget) — bigger HPA didn't help | App-HPA-bound; DB ~17pp headroom |
+| Metric | PG Run 1 (24/64) | PG Run 2 (32/128) | **PG Run 3 (32/128 + nodepool3 5×D8s_v6)** | Mongo Platinum+ (M60, 24/64) |
+|---|---|---|---|---|
+| Compute (DB) | **16 vCPU / 64 GiB** | **16 vCPU / 64 GiB** | **16 vCPU / 64 GiB** | **16 vCPU / 64 GiB** |
+| HA | off | off | off | on (zone-redundant standby) |
+| App replicas (HPA min/max) | **24 / 64** | **32 / 128** | **32 / 128** | **24 / 64** |
+| Pod requests / limits | `200m/512Mi` / `1500m/1Gi` | `100m/512Mi` / `2000m/1Gi` | `100m/512Mi` / `2000m/1Gi` | `200m/512Mi` / `1500m/1Gi` |
+| Cluster app vCPU available | ~22 | ~22 | **~52** | ~22 |
+| Affinity | nodepool + nodepool2 | all 3 pools (soft pref 2/3) | all 3 pools (soft pref 2/3) | nodepool + nodepool2 |
+| Aggregate RPS | **~5,107** | **~5,084** | **~5,106** | **~10,050** |
+| DB CPU peak | 24.18% | 39.85% | **24.34%** | **62.67%** |
+| DB Memory peak | 33.67% | 50.75% | 36.63% | 41.95% |
+| DB active_connections peak | 745 | 4,054 (queue) | **1,160** | n/a |
+| App-side p95 (create / update, median) | ~220 / ~256 ms | ~417 / ~507 ms | **~26 / ~28 ms** (~95% lower) | ~640 / ~675 ms |
+| App-side p95 (list, median) | ~89 ms | ~786 ms | **~9 ms** | n/a |
+| HPA scaled to | 64/64 (max) | 128/128 (max) | 128/128 (max) | 64/64 (max) |
+| k6 saturation (concurrent VUs p95) | ~639 | ~928 | **~638** | n/a |
+| Saturation verdict | App-HPA-bound (initial diagnosis) | (incorrectly) cluster-CPU-bound | **Upstream cap (k6 ramp / network / app serialisation)** — *not* DB, *not* cluster CPU, *not* HPA | App-HPA-bound; DB ~17pp headroom |
 
-**Headline:** Same compute, same app footprint, **Mongo doubled the RPS at ~3× higher per-request p95 latency, while PG sustained half the RPS at much tighter latency**. Both first-runs hit the same HPA ceiling (64/64). When the PG run was re-tested with HPA raised to 128 and per-pod CPU request halved to fit more pods, **aggregate RPS did not move (~5.1k both times)** and per-request latency roughly doubled. The DB CPU only inched from 24.18% → 39.85% (the bump comes from the connection-pool warmup transient, not steady-state work).
+**Headline:** Three PG runs, three cluster shapes (~22 vCPU → ~22 vCPU → ~52 vCPU app capacity), **same aggregate RPS** (~5,107 / ~5,084 / ~5,106). The Mongo M60 comparison is unchanged: Mongo doubles PG's RPS at the same offered ramp, but the diagnosis of *why* moved each time the cluster did:
 
-The cross-engine differentiator at Platinum+ scale is **how each engine's app-side persistence path (Mongo C# driver vs EF Core / Npgsql) consumes app-pod CPU per request** — not the DB tier. The re-test makes the diagnosis even sharper: doubling the HPA cap proved the limit isn't the number of replicas; it's the AKS cluster's *physical* app-tier vCPU budget (~22 vCPU after system DaemonSets, cert-manager, argocd, vault overhead), and EF Core / Npgsql consumes ~2× the CPU per request that Mongo's driver does, so the cluster ceiling produces half the RPS for PG.
+- **Run 1** hit HPA 64/64 with pods CPU-saturated against their request → diagnosed "HPA cap is the limit."
+- **Run 2** raised HPA to 128, dropped per-pod request so 128 pods would schedule — RPS unchanged, latency doubled. Diagnosed "AKS cluster's ~22 vCPU app-tier budget is the limit."
+- **Run 3** kept the same overlay but expanded `nodepool3` 2 → 5 × D8s_v6 (cluster app capacity ~22 → ~52 vCPU). RPS *still* unchanged, but **p95 latency collapsed by ~95%** across all four CRUD verbs and DB CPU returned to Run-1 levels. Earlier diagnoses falsified — the cap is **upstream of the cluster, the DB, and the HPA**: most likely the k6 offered ramp itself, the kube-proxy / ClusterIP path, or an internal serialisation point inside the EF Core / Npgsql request edge. See the linked detail report for the candidate causes and follow-up actions.
 
-**Why couldn't we push past 5.1k by adding nodes?** Both `nodepool` (D2s_v3) and `nodepool2` (D2s_v6) scale-up attempts returned `RequestDisallowedByPolicy` (Azure tenant MCAPS deny). The only available knobs were inside the existing 22-node fleet — and they all reduce to "share the same ~22 vCPU among more pods," which doesn't help.
+What we *did* confirm with Run 3:
+- The DB at PG Platinum+ is wildly over-provisioned for what this stack pushes through it (24% CPU, 36% memory, 1.6k IOPS / 6k ceiling, 1.16k connections / 5k limit).
+- More cluster CPU per pod (Run 3: ~330m real CPU / pod vs Run 2: ~240m) makes p95 latency drop near-linearly with the headroom — meaningful for SLO-bound workloads even when peak RPS doesn't move.
+- The cross-engine RPS gap to Mongo (PG ~5k vs Mongo ~10k at the same compute and app footprint) **persists** even after handing PG ~2.4× the cluster CPU it had in Run 1. Mongo's gap-of-2× is being captured *upstream of cluster CPU* — likely in the offered-load path or in driver-level concurrency that PG's EF Core / Npgsql trips earlier than the Mongo driver does.
 
-For PG specifically: the upgrade D8 → D16 dropped p95 latency by ~50–60% while leaving aggregate RPS flat (5,330 → 5,107 → 5,084). The bottleneck migrated from the DB on D8 (64.88% CPU) to the app tier on D16 (DB 24-40% CPU, AKS app vCPU exhausted). **PG Gold (D4ds_v5) is likely the cost-optimal tier for this CRUD shape** if the app tier is right-sized; pushing past 5k RPS on PG requires either lifting the cluster vCPU ceiling (currently policy-blocked) or reducing CPU-per-request on the app side (EF Core compiled queries, Npgsql `NpgsqlDataSource` reuse, output cache for GETs).
+**Why couldn't we initially push past 5.1k by adding nodes?** Run 2's `nodepool` (D2s_v3) and `nodepool2` (D2s_v6) scale-up attempts returned `RequestDisallowedByPolicy` (Azure tenant MCAPS deny). Run 3 was unblocked by the operator freeing regional vCPU quota, which let `nodepool3` (D8s_v6) scale 2 → 5. nodepool / nodepool2 remain frozen at 10 nodes each — the policy applies per VMSS, and only nodepool3's was permitted. So the working pattern for app scale on this cluster is **expand nodepool3 (D8s_v6)** rather than the smaller pools.
 
-**RPS step ratio M50 → M60: 1.95×** — sustains the "double per step" trend on the Mongo side (Bronze→Silver 2.48×, Silver→Gold 2.32×, Gold→Platinum(M40) 2.55×, Platinum(M40→M50) 2.02×, Platinum→Platinum+ 1.95×). On the PG side **Platinum → Platinum+ collapses to 0.96×** at this app-tier ceiling — same number sustained on a 2× DB. At 10k RPS the workload remains CPU-bound on either engine; memory utilization is now uniformly under-provisioned (M60: 41.95% on 64 GiB; PG D16 re-test: 50.75%, mostly connection-pool buffers).
+For PG specifically: the upgrade D8 → D16 dropped p95 latency further when paired with cluster expansion (Run 3 p95 create ~26 ms vs Platinum's ~467 ms), but aggregate RPS remained flat (5,330 → 5,107 → 5,084 → 5,106). **PG Gold (D4ds_v5) is now the very obvious cost-optimal tier** for this CRUD shape — D16ds_v5 sits at 24% CPU regardless of how the app tier is shaped. Pushing past 5k RPS on PG (or finding the *real* PG ceiling) requires re-running with a higher offered k6 ramp; today's number is a property of the load generator and the network path, not of Postgres.
+
+**RPS step ratio M50 → M60: 1.95×** — sustains the "double per step" trend on the Mongo side. On the PG side **Platinum → Platinum+ collapses to 0.96×** at the offered ramp we're using; until the upstream cap is identified and lifted, we don't have a defensible PG Platinum+ ceiling. Memory utilisation is uniformly under-provisioned across all 3 PG runs (peak 33–51%, mostly connection-pool buffers; the actual working set fits in single-digit GiB).
 
 ## Key Takeaways
 
@@ -174,5 +185,5 @@ For PG specifically: the upgrade D8 → D16 dropped p95 latency by ~50–60% whi
 - **Action item:** PG Silver re-test with a higher offered ramp would tighten the cross-engine comparison; today's PG Silver number is a lower bound on what D2ds_v5 can do.
 - **Platinum+ doubles the ceiling cleanly on Mongo (10k RPS at 62.67% CPU)** — the next bottleneck is *the app tier*, not the DB. Pushing past 10k requires raising HPA caps or per-pod CPU limits, or scaling the AKS nodepool that hosts hex-scaffold pods.
 - **PG D16 is over-provisioned for this app footprint.** 5,107 RPS at 24.18% CPU = ~4 vCPU effectively used on a 16 vCPU server. Latency improved sharply (~50% lower than D8) but RPS stayed flat — the upgrade buys headroom and tighter latency, not throughput. PG Gold (D4ds_v5) is likely the cost-optimal tier for this CRUD shape with a matched app footprint.
-- **PG Platinum+ peak on this AKS cluster is ~5.1k RPS — confirmed by re-test.** A second run with HPA raised 64 → 128 and per-pod CPU request halved (so 128 pods could schedule) **produced the same ~5.1k RPS** with latency ~2× higher. The binding constraint is the cluster's app-tier vCPU budget (~22 vCPU after system / ops overhead), not the DB and not the HPA cap. Adding nodes was attempted and **blocked by Azure MCAPS deny policy** on this subscription. Past this point the only PG levers are app-side (driver/ORM CPU-per-request) or compute-side (lift the policy / different VM family).
-- **At Platinum+ compute the cross-engine gap is the app-side driver path**, not the DB. Mongo's C# driver consumes less CPU per request than EF Core / Npgsql does, so Mongo extracts ~2× more RPS from the same cluster vCPU budget. This is the layer to optimise next, not the DB SKU.
+- **PG Platinum+ caps at ~5,107 RPS at the current offered ramp — across 3 cluster shapes (~22 / ~22 / ~52 vCPU app capacity).** The third run (nodepool3 expanded 2 → 5 × D8s_v6) **falsified** the Run-2 diagnosis that cluster CPU was the binding constraint: tripling the available app vCPU did not move RPS, but it dropped PG's p95 latency by ~95% across all four CRUD verbs (create 26 ms median, list 9 ms). The actual ceiling is upstream of the cluster, the DB, and the HPA — most likely the k6 offered ramp itself, the kube-proxy/ClusterIP path, or an internal serialisation point in the EF Core / Npgsql request edge. **Next test:** raise the k6 `peak` rate (3000 → 6000 iter/sec/runner) — if that doesn't move RPS the cap is in the network or the app, not the load generator.
+- **At Platinum+ compute the cross-engine gap to Mongo (10k vs 5k RPS) survives a 2.4× cluster CPU expansion on the PG side**, so the layer producing the gap is *upstream* of cluster CPU. Driver/ORM efficiency is still a candidate, but at PG's 24% DB CPU + ~10% pod CPU in Run 3 it can't be a CPU story alone — likely a contention/serialisation pattern in the request path that Mongo's driver doesn't exhibit. Worth profiling with end-to-end traces before another DB SKU bump.
