@@ -6,6 +6,7 @@ using Hex.Scaffold.Domain.AccountAggregate;
 using Hex.Scaffold.Domain.Common;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Extensions.DiagnosticSources;
 
 namespace Hex.Scaffold.Adapters.Persistence.Extensions;
 
@@ -46,6 +47,12 @@ public static class MongoDbServiceExtensions
       settings.MaxConnectionPoolSize = 100;
       settings.MinConnectionPoolSize = 10;
       settings.MaxConnectionIdleTime = TimeSpan.FromMinutes(10);
+      // Wire the diagnostic-sources subscriber so each Mongo command emits an
+      // Activity on ActivitySource "MongoDB.Driver.Core.Extensions.DiagnosticSources"
+      // (subscribed in ObservabilityConfig.cs). Without this, the OTel pipeline
+      // sees zero Mongo dependency edges and the App Map renders the API node
+      // with no outbound link to DocumentDB. See plan §4.2.6.
+      settings.ClusterConfigurator = cb => cb.Subscribe(new DiagnosticsActivityEventSubscriber());
       return new MongoClient(settings);
     });
 

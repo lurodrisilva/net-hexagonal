@@ -51,3 +51,16 @@ data:
   RateLimit__PermitLimit:    {{ .Values.rateLimit.permitLimit    | quote }}
   RateLimit__WindowSeconds:  {{ .Values.rateLimit.windowSeconds  | quote }}
   RateLimit__QueueLimit:     {{ .Values.rateLimit.queueLimit     | quote }}
+
+  # --- Observability sampling (OTel TracerProvider + classic AI SDK) -------
+  # OTel pipeline ratio: ParentBased(TraceIdRatio) — see ObservabilityConfig.cs.
+  # Loadtest overlay drops this to 0.1 to keep AI ingest under cap.
+  Observability__Sampling__TracesRatio:    {{ .Values.observability.sampling.tracesRatio | quote }}
+  # Classic-SDK adaptive sampling per-pod ceiling (drives QuickPulse / Live Metrics).
+  ClassicSdk__MaxTelemetryItemsPerSecond:  {{ .Values.classicSdk.maxTelemetryItemsPerSecond | quote }}
+
+  # --- Serilog level overlay (loadtest overlay lowers root to Warning) -----
+  Serilog__MinimumLevel__Default: {{ .Values.observability.logging.rootLevel | quote }}
+  {{- range $namespace, $level := .Values.observability.logging.overrides }}
+  Serilog__MinimumLevel__Override__{{ $namespace }}: {{ $level | quote }}
+  {{- end }}
