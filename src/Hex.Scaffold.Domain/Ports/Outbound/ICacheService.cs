@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Domain.Ports.Outbound;
+﻿namespace Hex.Scaffold.Domain.Ports.Outbound;
 
 public interface ICacheService
 {

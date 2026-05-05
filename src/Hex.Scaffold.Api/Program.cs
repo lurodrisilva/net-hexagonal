@@ -1,4 +1,4 @@
-using Hex.Scaffold.Api.Configurations;
+﻿using Hex.Scaffold.Api.Configurations;
 using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);

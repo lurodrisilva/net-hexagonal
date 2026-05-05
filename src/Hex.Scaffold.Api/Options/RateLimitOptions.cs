@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Api.Options;
+﻿namespace Hex.Scaffold.Api.Options;
 
 // Bound to the "RateLimit" configuration section. Defaults match the
 // hardcoded values shipped before the section existed (PermitLimit=100,

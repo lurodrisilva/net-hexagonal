@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 
 namespace Hex.Scaffold.Application.Accounts.Get;
 

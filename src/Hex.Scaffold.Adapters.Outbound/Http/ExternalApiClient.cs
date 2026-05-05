@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Hex.Scaffold.Domain.Common;
 using Hex.Scaffold.Domain.Ports.Outbound;

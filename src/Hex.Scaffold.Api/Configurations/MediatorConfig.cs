@@ -1,4 +1,4 @@
-using Hex.Scaffold.Adapters.Inbound.Api.Accounts;
+﻿using Hex.Scaffold.Adapters.Inbound.Api.Accounts;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
 using Hex.Scaffold.Application.Accounts.Create;
 using Hex.Scaffold.Application.Behaviors;

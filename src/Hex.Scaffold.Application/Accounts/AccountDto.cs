@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hex.Scaffold.Domain.AccountAggregate;
 
 namespace Hex.Scaffold.Application.Accounts;

@@ -1,4 +1,4 @@
-using Hex.Scaffold.Adapters.Persistence.Common;
+﻿using Hex.Scaffold.Adapters.Persistence.Common;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql;
 using Hex.Scaffold.Adapters.Persistence.PostgreSql.Queries;
 using Hex.Scaffold.Application.Accounts.List;
@@ -27,9 +27,9 @@ public static class PostgreSqlServiceExtensions
     // here because every request gets a fresh DbContext scope (no
     // transaction state, search_path, or session settings to clean up).
     var b = new NpgsqlConnectionStringBuilder(rawConnectionString);
-    if (!b.ContainsKey("Connection Idle Lifetime"))   b.ConnectionIdleLifetime   = 600;
+    if (!b.ContainsKey("Connection Idle Lifetime")) b.ConnectionIdleLifetime = 600;
     if (!b.ContainsKey("Connection Pruning Interval")) b.ConnectionPruningInterval = 30;
-    if (!b.ContainsKey("No Reset On Close"))          b.NoResetOnClose            = true;
+    if (!b.ContainsKey("No Reset On Close")) b.NoResetOnClose = true;
     var connectionString = b.ConnectionString;
 
     services.AddScoped<EventDispatcherInterceptor>();

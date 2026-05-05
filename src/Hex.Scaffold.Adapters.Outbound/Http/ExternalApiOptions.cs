@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Adapters.Outbound.Http;
+﻿namespace Hex.Scaffold.Adapters.Outbound.Http;
 
 public sealed class ExternalApiOptions
 {

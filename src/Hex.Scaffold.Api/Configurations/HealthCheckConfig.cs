@@ -1,4 +1,4 @@
-using Hex.Scaffold.Api.Options;
+﻿using Hex.Scaffold.Api.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MongoDB.Driver;
 using StackExchange.Redis;

@@ -1,4 +1,4 @@
-using Hex.Scaffold.Adapters.Inbound.Api.Extensions;
+﻿using Hex.Scaffold.Adapters.Inbound.Api.Extensions;
 using Hex.Scaffold.Application.Accounts;
 using Hex.Scaffold.Application.Accounts.Get;
 using Hex.Scaffold.Domain.AccountAggregate;

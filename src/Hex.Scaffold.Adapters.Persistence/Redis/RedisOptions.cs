@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Adapters.Persistence.Redis;
+﻿namespace Hex.Scaffold.Adapters.Persistence.Redis;
 
 public sealed class RedisOptions
 {

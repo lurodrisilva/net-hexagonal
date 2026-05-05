@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Application.Accounts.List;
+﻿namespace Hex.Scaffold.Application.Accounts.List;
 
 // Cursor-based pagination port. The persistence-side implementation reads
 // over `created DESC, id DESC` so cursors stay stable under inserts.

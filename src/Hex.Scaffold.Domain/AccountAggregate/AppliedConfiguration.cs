@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Domain.AccountAggregate;
+﻿namespace Hex.Scaffold.Domain.AccountAggregate;
 
 // Stripe's `applied_configurations` is the per-Account toggle for which of
 // the three configurations (customer / merchant / recipient) are in effect.
@@ -8,8 +8,8 @@ namespace Hex.Scaffold.Domain.AccountAggregate;
 // without the int-mapping ceremony.
 public sealed class AppliedConfiguration : IEquatable<AppliedConfiguration>
 {
-  public static readonly AppliedConfiguration Customer  = new("customer");
-  public static readonly AppliedConfiguration Merchant  = new("merchant");
+  public static readonly AppliedConfiguration Customer = new("customer");
+  public static readonly AppliedConfiguration Merchant = new("merchant");
   public static readonly AppliedConfiguration Recipient = new("recipient");
 
   // List exposed as a static for callers that need to iterate (e.g. the

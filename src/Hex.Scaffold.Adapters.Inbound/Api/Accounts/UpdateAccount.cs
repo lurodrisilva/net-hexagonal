@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hex.Scaffold.Application.Accounts;
 using Hex.Scaffold.Application.Accounts.Update;
 using Hex.Scaffold.Domain.AccountAggregate;
@@ -30,14 +30,14 @@ public class UpdateAccount(IMediator mediator)
   {
     var command = new UpdateAccountCommand(
       Id: AccountId.From(request.Id!),
-      DisplayName:           request.DisplayName.ToMaybeString(),
-      ContactEmail:          request.ContactEmail.ToMaybeString(),
-      ContactPhone:          request.ContactPhone.ToMaybeString(),
+      DisplayName: request.DisplayName.ToMaybeString(),
+      ContactEmail: request.ContactEmail.ToMaybeString(),
+      ContactPhone: request.ContactPhone.ToMaybeString(),
       AppliedConfigurations: request.AppliedConfigurations.ToMaybeAppliedConfigs(),
-      ConfigurationJson:     request.Configuration.ToMaybeRawJson(),
-      IdentityJson:          request.Identity.ToMaybeRawJson(),
-      DefaultsJson:          request.Defaults.ToMaybeRawJson(),
-      MetadataJson:          request.Metadata.ToMaybeRawJson());
+      ConfigurationJson: request.Configuration.ToMaybeRawJson(),
+      IdentityJson: request.Identity.ToMaybeRawJson(),
+      DefaultsJson: request.Defaults.ToMaybeRawJson(),
+      MetadataJson: request.Metadata.ToMaybeRawJson());
 
     var result = await mediator.Send(command, ct);
     if (result.IsSuccess) return TypedResults.Ok(result.Value);

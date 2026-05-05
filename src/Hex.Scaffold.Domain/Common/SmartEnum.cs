@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Domain.Common;
+﻿namespace Hex.Scaffold.Domain.Common;
 
 public abstract class SmartEnum<TEnum> where TEnum : SmartEnum<TEnum>
 {

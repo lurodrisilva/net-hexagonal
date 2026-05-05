@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Hex.Scaffold.Domain.AccountAggregate;
 
 namespace Hex.Scaffold.Adapters.Inbound.Api.Accounts;
@@ -15,16 +15,16 @@ internal static class AccountFieldHelpers
     el.ValueKind switch
     {
       JsonValueKind.Undefined => (false, null),
-      JsonValueKind.Null      => (true, null),
-      _                        => (true, el.GetString())
+      JsonValueKind.Null => (true, null),
+      _ => (true, el.GetString())
     };
 
   public static (bool HasValue, string? Value) ToMaybeRawJson(this JsonElement el) =>
     el.ValueKind switch
     {
       JsonValueKind.Undefined => (false, null),
-      JsonValueKind.Null      => (true, null),
-      _                        => (true, el.GetRawText())
+      JsonValueKind.Null => (true, null),
+      _ => (true, el.GetRawText())
     };
 
   // Materialize the wire-format string array into the SmartEnum set the

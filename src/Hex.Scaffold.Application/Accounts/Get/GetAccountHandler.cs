@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 using Hex.Scaffold.Domain.AccountAggregate.Specifications;
 using Hex.Scaffold.Domain.Ports.Outbound;
 

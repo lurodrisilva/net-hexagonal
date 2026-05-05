@@ -1,4 +1,4 @@
-using Hex.Scaffold.Domain.AccountAggregate;
+﻿using Hex.Scaffold.Domain.AccountAggregate;
 using Hex.Scaffold.Domain.AccountAggregate.Events;
 
 namespace Hex.Scaffold.Tests.Unit.Domain;

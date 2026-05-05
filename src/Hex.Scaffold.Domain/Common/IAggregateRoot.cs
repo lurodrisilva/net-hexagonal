@@ -1,3 +1,3 @@
-namespace Hex.Scaffold.Domain.Common;
+﻿namespace Hex.Scaffold.Domain.Common;
 
 public interface IAggregateRoot;

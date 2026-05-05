@@ -1,4 +1,4 @@
-global using FastEndpoints;
+﻿global using FastEndpoints;
 global using FastEndpoints.Swagger;
 global using Mediator;
 global using Microsoft.EntityFrameworkCore;

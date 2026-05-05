@@ -1,4 +1,4 @@
-namespace Hex.Scaffold.Tests.Integration.Fixtures;
+﻿namespace Hex.Scaffold.Tests.Integration.Fixtures;
 
 [CollectionDefinition("IntegrationTests")]
 public class IntegrationTestCollection : ICollectionFixture<IntegrationTestFixture> { }

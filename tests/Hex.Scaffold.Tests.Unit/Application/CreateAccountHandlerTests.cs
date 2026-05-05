@@ -1,4 +1,4 @@
-using Hex.Scaffold.Application.Accounts.Create;
+﻿using Hex.Scaffold.Application.Accounts.Create;
 using Hex.Scaffold.Domain.AccountAggregate;
 
 namespace Hex.Scaffold.Tests.Unit.Application;
