@@ -1,0 +1,512 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Kafka loadtest dashboard for Hex.Scaffold — four quadrants: k6 producer, Strimzi broker, inbound consumer + app, repository. Variable-templated by tier/repo/runId so a single dashboard slices to any of the 6 loadtest runs.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Q1 — k6 producer",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "id": 101,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(kafka_writer_message_count{tier=~\"$tier\",repo=~\"$repo\",runId=~\"$runId\"}[1m])",
+          "legendFormat": "{{tier}}/{{repo}} produced/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Producer rate (kafka_writer_message_count)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "id": 102,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_writer_request_latency_ms{tier=~\"$tier\",repo=~\"$repo\",runId=~\"$runId\",quantile=\"0.5\"}",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_writer_request_latency_ms{tier=~\"$tier\",repo=~\"$repo\",runId=~\"$runId\",quantile=\"0.95\"}",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_writer_request_latency_ms{tier=~\"$tier\",repo=~\"$repo\",runId=~\"$runId\",quantile=\"0.99\"}",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Producer request latency p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 20, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 103,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_writer_error_count{tier=~\"$tier\",repo=~\"$repo\",runId=~\"$runId\"}",
+          "legendFormat": "errors",
+          "refId": "A"
+        }
+      ],
+      "title": "Producer errors (must be 0)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 200,
+      "panels": [],
+      "title": "Q2 — Strimzi broker",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "id": 201,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (kafka_broker_id) (rate(kafka_server_brokertopicmetrics_bytesin_total{strimzi_io_cluster=\"hex-scaffold-loadtest\"}[1m]))",
+          "legendFormat": "broker {{kafka_broker_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "BytesInPerSec per broker",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 50 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "id": 202,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent{strimzi_io_cluster=\"hex-scaffold-loadtest\"} * 100",
+          "legendFormat": "broker {{kafka_broker_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RequestHandlerAvgIdlePercent (stop if <20%)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 30, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "id": 203,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(kafka_server_replicamanager_underreplicatedpartitions{strimzi_io_cluster=\"hex-scaffold-loadtest\"})",
+          "legendFormat": "under-replicated partitions",
+          "refId": "A"
+        }
+      ],
+      "title": "UnderReplicatedPartitions (must be 0)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 300,
+      "panels": [],
+      "title": "Q3 — Inbound consumer + app",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 19 },
+      "id": 301,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafka_consumergroup_lag{consumergroup=~\"hex-scaffold-loadtest-$tier-$repo-.*\"}",
+          "legendFormat": "p={{partition}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Per-partition consumer lag (stop if monotonic >2 min)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 150 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 19 },
+      "id": 302,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum(rate(inbound_event_processing_duration_ms_bucket{tier=~\"$tier\",repo=~\"$repo\"}[1m])) by (le, event_type))",
+          "legendFormat": "p95 {{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "inbound_event_processing_duration_ms p95 (200ms gate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 19 },
+      "id": 303,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"default\",pod=~\"hex-scaffold-.*\"}[1m])) * 100",
+          "legendFormat": "{{pod}} cpu",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"default\",pod=~\"hex-scaffold-.*\"}) / 1024 / 1024",
+          "legendFormat": "{{pod}} mem MiB",
+          "refId": "B"
+        }
+      ],
+      "title": "Consumer pod CPU + memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 19 },
+      "id": 304,
+      "options": {
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
+        "content": "## Per-message commit RTT — TBD\n\nThe metric `kafka_consumer_commit_latency_ms` is not yet emitted by the Hex.Scaffold consumer (see plan §9 risks). To enable this panel, add a `Histogram<double>` to `AccountEventConsumer.cs` recording `_consumer.Commit(message)` wall time, then replace this panel with a histogram_quantile timeseries query.",
+        "mode": "markdown"
+      },
+      "title": "Per-message commit RTT (TBD — instrumentation pending)",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 400,
+      "panels": [],
+      "title": "Q4 — Repository",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 28 },
+      "id": 401,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (datname) (pg_stat_database_xact_commit{datname=\"postgres\"}) - sum by (datname) (pg_stat_database_xact_rollback{datname=\"postgres\"})",
+          "legendFormat": "{{datname}} net commits",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(pg_stat_database_blks_read{datname=\"postgres\"}[1m])",
+          "legendFormat": "{{datname}} block reads/s",
+          "refId": "B"
+        }
+      ],
+      "title": "PG: pg_stat_database waits + IOPs (PG-tier runs only)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 28 },
+      "id": 402,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "azureMonitor": {
+            "metricName": "cpu_percent",
+            "metricNamespace": "Microsoft.DBforPostgreSQL/flexibleServers",
+            "aggregation": "Average",
+            "timeGrain": "PT1M"
+          },
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        }
+      ],
+      "title": "PG: server CPU % (Azure Monitor)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 28 },
+      "id": 403,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "azureMonitor": {
+            "metricName": "TotalRequestUnits",
+            "metricNamespace": "Microsoft.DocumentDB/mongoClusters",
+            "aggregation": "Total",
+            "timeGrain": "PT1M"
+          },
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        }
+      ],
+      "title": "DocumentDB: request units consumed (Mongo-tier runs only)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 28 },
+      "id": 404,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "azureMonitor": {
+            "metricName": "CPUUsage",
+            "metricNamespace": "Microsoft.DocumentDB/mongoClusters",
+            "aggregation": "Average",
+            "timeGrain": "PT1M"
+          },
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+          "queryType": "Azure Monitor",
+          "refId": "A"
+        },
+        {
+          "azureMonitor": {
+            "metricName": "IOPS",
+            "metricNamespace": "Microsoft.DocumentDB/mongoClusters",
+            "aggregation": "Average",
+            "timeGrain": "PT1M"
+          },
+          "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}" },
+          "queryType": "Azure Monitor",
+          "refId": "B"
+        }
+      ],
+      "title": "DocumentDB: CPU + storage IOPs (Mongo-tier runs only)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["loadtest", "kafka", "hex-scaffold"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "tier",
+        "multi": false,
+        "name": "tier",
+        "options": [
+          { "selected": false, "text": "silver", "value": "silver" },
+          { "selected": false, "text": "gold", "value": "gold" },
+          { "selected": false, "text": "platinum", "value": "platinum" },
+          { "selected": false, "text": "All", "value": ".*" }
+        ],
+        "query": "silver,gold,platinum",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "repo",
+        "multi": false,
+        "name": "repo",
+        "options": [
+          { "selected": false, "text": "pg", "value": "pg" },
+          { "selected": false, "text": "mongo", "value": "mongo" },
+          { "selected": false, "text": "All", "value": ".*" }
+        ],
+        "query": "pg,mongo",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": ".*", "value": ".*" },
+        "hide": 0,
+        "label": "runId",
+        "name": "runId",
+        "options": [{ "selected": true, "text": ".*", "value": ".*" }],
+        "query": ".*",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Kafka Loadtest — Hex.Scaffold",
+  "uid": "hex-scaffold-kafka-loadtest",
+  "version": 1,
+  "weekStart": ""
+}

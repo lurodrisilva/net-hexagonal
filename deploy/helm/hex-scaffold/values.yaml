@@ -55,6 +55,12 @@ kafka:
   # Override per-environment via Helm --set or a values overlay so load-test
   # runs can target isolated topics without touching the default prod topic.
   inboundTopic: "v2.core.accounts"
+  # Consumer prefetch + fetch-batching knobs. Defaults match the Confluent.Kafka
+  # library defaults so production behaviour is unchanged. Per-tier loadtest
+  # overlays raise these to amortise broker round-trip cost at high throughput.
+  # See KafkaOptions.cs for the MaxPollRecords→QueuedMinMessages mapping.
+  maxPollRecords: 500
+  fetchMinBytes: 1
   # Azure Application Insights connection string. Leave empty to disable the
   # Azure Monitor exporter (the OTLP pipeline still runs). Inject via a real
   # SecretProviderClass / ExternalSecret in production.

@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Per-tier loadtest overlay — Silver
+#
+# Plan reference: .omc/plans/kafka-loadtest-plan.md §5.2.
+#
+# Pinned consumer count + resources (HPA explicitly OFF) so tier comparisons
+# are not contaminated by mid-run scale events. Combined at install time
+# with values-aks-test-loadtest.yaml + the per-run --set / --set-string flags.
+# ---------------------------------------------------------------------------
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Critical: HPA must be off, otherwise consumer pods scale mid-run and
+# contaminate the tier comparison. See plan §5.2 critic Finding #11.
+autoscaling:
+  enabled: false
+
+kafka:
+  # Silver: low fetch batching — broker round-trips are cheap relative to
+  # the modest consumer rate, so amortisation gain is minimal.
+  maxPollRecords: 100
+  fetchMinBytes: 16384
