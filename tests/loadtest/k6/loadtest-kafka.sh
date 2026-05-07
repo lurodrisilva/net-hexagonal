@@ -49,6 +49,7 @@ AI_CONN="${AI_CONN:-InstrumentationKey=84057efc-9957-45a5-b19b-5c60cd12890e;Inge
 AI_APP_ID="${AI_APP_ID:-e65c9fd9-b510-48e7-894f-32f69a230d6d}"
 RUN_CAP_SECONDS="${RUN_CAP_SECONDS:-900}"
 POLL_INTERVAL_SEC="${POLL_INTERVAL_SEC:-30}"
+P95_BREACH_THRESHOLD_MS="${P95_BREACH_THRESHOLD_MS:-200}"
 
 # URL-encode the password for connection strings ($ -> %24, % -> %25).
 urlenc() { python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
@@ -121,7 +122,7 @@ kubectl apply -f "$TR_RENDERED" >>"${ART_DIR}/run.log" 2>&1
 # ---------------------------------------------------------------------
 # Watch loop — poll every POLL_INTERVAL_SEC. Stop on:
 #   - TestRun finished / failed
-#   - inbound_event_processing_duration_ms p95 >= 200 for >=2 samples
+#   - inbound_event_processing_duration_ms p95 >= ${P95_BREACH_THRESHOLD_MS} for >=2 samples
 #   - Repo CPU > 80% sustained
 #   - cap reached (RUN_CAP_SECONDS)
 # Capture per-poll evidence to ART_DIR.
@@ -184,7 +185,7 @@ while :; do
   AI_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and customDimensions.tier == '${TIER}' and customDimensions.repo == '${REPO}' | where timestamp > ago(2m) | summarize p95=percentile(value, 95)"
   P95=$(run_with_timeout 25 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_QUERY" --output tsv --query 'tables[0].rows[0][0]' | head -1)
   echo "$(date -u +%FT%TZ) p95_ms=${P95}" >>"${ART_DIR}/ai-p95.log"
-  if [ -n "$P95" ] && python3 -c "import sys; sys.exit(0 if float('${P95}') >= 200 else 1)" 2>/dev/null; then
+  if [ -n "$P95" ] && python3 -c "import sys; sys.exit(0 if float('${P95}') >= ${P95_BREACH_THRESHOLD_MS} else 1)" 2>/dev/null; then
     P95_BREACH=$((P95_BREACH + 1))
     if [ $P95_BREACH -ge 2 ]; then STOP_REASON="p95-breach"; break; fi
   else
