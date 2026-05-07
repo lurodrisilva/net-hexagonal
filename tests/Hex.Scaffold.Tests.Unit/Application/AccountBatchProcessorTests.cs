@@ -197,4 +197,62 @@ public class AccountBatchProcessorTests
       Arg.Any<AccountCreatedEvent>(),
       Arg.Any<CancellationToken>());
   }
+
+  [Fact]
+  public async Task ProcessAsync_SameBatchCreateThenUpdate_CollapsesToSingleAddCarryingUpdatedState()
+  {
+    // Regression for the silver-pg Phase 5 v2 first run: a Create + Update
+    // for the same id within one consumer poll caused EF to flip the
+    // aggregate's tracked state from Added to Modified, emitting an UPDATE
+    // for a row that had not yet been INSERTed. Postgres reports 0 rows
+    // affected, EF surfaces it as DbUpdateConcurrencyException, and the
+    // whole batch fails — at-least-once redelivery then loops the same
+    // poison batch indefinitely.
+    var id = NewExternalId("samebcrupd");
+
+    var events = new[]
+    {
+      CreateEvent(id, displayName: "InitialName"),
+      UpdateEvent(id, "RenamedInBatch"),
+    };
+
+    IReadOnlyList<BatchOp<Account>>? captured = null;
+    _repository.SaveBatchAsync(Arg.Any<IReadOnlyList<BatchOp<Account>>>(), Arg.Any<CancellationToken>())
+      .Returns(call => { captured = call.Arg<IReadOnlyList<BatchOp<Account>>>(); return Task.CompletedTask; });
+
+    await _sut.ProcessAsync(events, CancellationToken.None);
+
+    await _repository.Received(1).SaveBatchAsync(Arg.Any<IReadOnlyList<BatchOp<Account>>>(), Arg.Any<CancellationToken>());
+    captured.ShouldNotBeNull();
+    captured!.Count.ShouldBe(1);
+    captured[0].Kind.ShouldBe(BatchOpKind.Add);
+    // Same in-memory aggregate carries the post-update state through the
+    // Add op — repo will INSERT the renamed display name, not the original.
+    captured[0].Entity.DisplayName.ShouldBe("RenamedInBatch");
+  }
+
+  [Fact]
+  public async Task ProcessAsync_SameBatchCreateThenDelete_DropsBothOpsAndSkipsSave()
+  {
+    // Net-zero write — Create + Delete for the same id within one batch
+    // should never round-trip to the database. Issuing both would have
+    // EF emit INSERT followed by DELETE for an aggregate that ultimately
+    // is not persisted (and Mongo BulkWrite a similar Insert+Delete pair).
+    var id = NewExternalId("samebcrdel");
+
+    var events = new[]
+    {
+      CreateEvent(id),
+      DeleteEvent(id),
+    };
+
+    await _sut.ProcessAsync(events, CancellationToken.None);
+
+    // ops.Count == 0 short-circuits before SaveBatchAsync.
+    await _repository.DidNotReceiveWithAnyArgs().SaveBatchAsync(default!, default);
+    // The Create that was cancelled by the Delete should NOT publish an
+    // AccountCreatedEvent — otherwise downstream subscribers see a Create
+    // that never persisted.
+    await _mediator.DidNotReceiveWithAnyArgs().Publish(default(AccountCreatedEvent)!, default);
+  }
 }

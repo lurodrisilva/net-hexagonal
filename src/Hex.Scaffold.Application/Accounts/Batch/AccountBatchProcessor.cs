@@ -92,6 +92,22 @@ public sealed class AccountBatchProcessor(
     //    semantics so REST and Kafka inbound stay behaviourally equivalent.
     var ops = new List<BatchOp<Account>>(events.Count);
     var createdEntities = new List<Account>();
+    // Tracks ids whose Add op is already pending in this batch. Used to
+    // collapse same-batch Create+Update / Create+Delete sequences for the
+    // same id into a single op so the underlying repository never sees
+    // Add+Update or Add+Delete on the same in-memory aggregate.
+    //
+    // Why this matters: in the EF/Postgres path, set.Update(entity) on an
+    // entity currently in EntityState.Added flips its state to Modified —
+    // SaveChanges then emits UPDATE for a row that has not been INSERTed
+    // yet, which Postgres reports as "0 rows affected" and EF surfaces as
+    // DbUpdateConcurrencyException. The Mongo path has the analogue: an
+    // unordered BulkWrite of InsertOne + ReplaceOne for the same id can
+    // race the Replace ahead of the Insert, dropping the update payload.
+    // Collapsing to a single Add (which already carries the post-update
+    // state — `account` is the same in-memory instance and ApplyUpdate
+    // mutates it in place) avoids both failure modes cleanly.
+    var pendingAddIds = new HashSet<AccountId>();
 
     foreach (var (id, dto) in creates)
     {
@@ -116,6 +132,7 @@ public sealed class AccountBatchProcessor(
       // Track in byId so a subsequent Update/Delete for the same id in the
       // same batch sees the just-created aggregate.
       byId[id] = account;
+      pendingAddIds.Add(id);
     }
 
     foreach (var (id, dto) in updates)
@@ -138,6 +155,12 @@ public sealed class AccountBatchProcessor(
         defaultsJson: dto.Defaults.ToMaybeRawJson(),
         metadataJson: dto.Metadata.ToMaybeRawJson());
 
+      // Same-batch Create + Update for the same id: mutation has already
+      // landed on the in-memory aggregate that the pending Add op points
+      // at, so the persisted INSERT will carry the post-update state.
+      // Skipping the Update op avoids the EF Add→Modified state flip.
+      if (pendingAddIds.Contains(id)) continue;
+
       ops.Add(new BatchOp<Account>(BatchOpKind.Update, account));
     }
 
@@ -152,6 +175,21 @@ public sealed class AccountBatchProcessor(
       }
 
       account.MarkDeleted();
+
+      // Same-batch Create + Delete for the same id: cancel the pending Add
+      // outright (net write = no-op). Issuing both ops would have EF emit
+      // INSERT + DELETE for an aggregate that ultimately is not persisted
+      // and Mongo BulkWrite a similar Insert + Delete pair.
+      if (pendingAddIds.Remove(id))
+      {
+        var addIdx = ops.FindIndex(o => o.Kind == BatchOpKind.Add && ReferenceEquals(o.Entity, account));
+        if (addIdx >= 0) ops.RemoveAt(addIdx);
+        // Drop from createdEntities too so the post-write Mediator publish
+        // does not announce a Create that never happened.
+        createdEntities.Remove(account);
+        continue;
+      }
+
       ops.Add(new BatchOp<Account>(BatchOpKind.Delete, account));
     }
 
