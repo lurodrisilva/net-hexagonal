@@ -4,18 +4,29 @@
 #
 # Plan reference: .omc/plans/kafka-loadtest-plan.md §5.3.
 #
-# Topology (uniform across all six):
-#   partitions: 12         — 4× the broker count (3) so the consumer group
-#                            with up to 8 pods at Platinum still has spare
-#                            partitions for parallelism without idle pods.
-#   replicas:   3          — RF=3 matches the 3-broker NodePool; survives
-#                            one broker rolling without producer fail.
-#   retention.ms:    1h    — loadtest payload purges before any subsequent
-#                            run picks the same partition's offset.
-#   compression.type: lz4  — lowest CPU overhead at line-rate; matches the
-#                            k6 producer's compression knob.
-#   segment.bytes:   512MB — fewer rolling segments at Platinum throughput
-#                            keeps PageCache thrash off the hot path.
+# Topology:
+#   partitions:
+#     silver           = 12   — 2 consumer pods own 6 partitions each; the
+#                               400 events/s tier target leaves ample headroom.
+#     gold / platinum  = 24   — Phase 5 v2 expansion. Phase 5 v1 retro showed
+#                               12 capped consumer parallelism for the new
+#                               2,500 events/s (gold, 4 pods → 6/pod) and
+#                               5,000 events/s (platinum, 8 pods → 3/pod)
+#                               targets. Bumping to 24 evens partition
+#                               ownership at platinum (8×3) and gives gold
+#                               pods (4×6) enough parallelism for the new
+#                               batched-write consumer. Strimzi expansion
+#                               from 12→24 is online (no recreate). Reduction
+#                               is NOT, so do not roll this back without a
+#                               topic recreate.
+#   replicas:   3            — RF=3 matches the 3-broker NodePool; survives
+#                              one broker rolling without producer fail.
+#   retention.ms:    1h      — loadtest payload purges before any subsequent
+#                              run picks the same partition's offset.
+#   compression.type: lz4    — lowest CPU overhead at line-rate; matches the
+#                              k6 producer's compression knob.
+#   segment.bytes:   512MB   — fewer rolling segments at Platinum throughput
+#                              keeps PageCache thrash off the hot path.
 #
 # Lifecycle: applied once at Phase 5 pre-flight, kept across all 6 runs,
 # deleted at Phase 6 cleanup.
@@ -70,7 +81,7 @@ metadata:
     loadtest.repo: pg
 spec:
   topicName: v2.core.accounts.loadtest.gold.pg
-  partitions: 12
+  partitions: 24
   replicas: 2
   config:
     retention.ms: "3600000"
@@ -89,7 +100,7 @@ metadata:
     loadtest.repo: mongo
 spec:
   topicName: v2.core.accounts.loadtest.gold.mongo
-  partitions: 12
+  partitions: 24
   replicas: 2
   config:
     retention.ms: "3600000"
@@ -108,7 +119,7 @@ metadata:
     loadtest.repo: pg
 spec:
   topicName: v2.core.accounts.loadtest.platinum.pg
-  partitions: 12
+  partitions: 24
   replicas: 2
   config:
     retention.ms: "3600000"
@@ -127,7 +138,7 @@ metadata:
     loadtest.repo: mongo
 spec:
   topicName: v2.core.accounts.loadtest.platinum.mongo
-  partitions: 12
+  partitions: 24
   replicas: 2
   config:
     retention.ms: "3600000"
