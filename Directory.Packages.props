@@ -12,6 +12,10 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
     <PackageVersion Include="MongoDB.Driver" Version="3.4.0" />
+    <!-- Pinned direct override of the transitive Snappier dependency that -->
+    <!-- MongoDB.Driver 3.4.0 pulls in at v1.0.0 (vulnerable to GHSA-pggp-6c3x-2xmx). -->
+    <!-- 1.3.1 is the latest stable; the advisory is fixed from 1.1.6 onward. -->
+    <PackageVersion Include="Snappier" Version="1.3.1" />
     <!-- ActivitySource that emits MongoDB command spans for the OTel pipeline. -->
     <!-- v3.0.0 declares MongoDB.Driver compatibility range [3.0.0, 4.0.0) and -->
     <!-- net10.0 target framework — matches our Driver 3.4.0 pin. ActivitySource -->
