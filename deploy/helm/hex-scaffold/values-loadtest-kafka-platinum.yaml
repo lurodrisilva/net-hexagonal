@@ -18,7 +18,15 @@ autoscaling:
   enabled: false
 
 kafka:
-  # Platinum: aggressive fetch batching — at ~5,300 events/s every fetch
-  # round-trip the consumer skips translates to ~5ms saved per batch.
-  maxPollRecords: 500
-  fetchMinBytes: 65536
+  # Phase 5 v2 — Platinum: 5,000 events/s sustained target. With 8 consumer
+  # pods and the new 24-partition topic (PR-B), each pod owns 3 partitions ≈
+  # 625 events/s/pod (matches gold per-pod). Aggressive prefetch + bulk-write
+  # cap so each pod can ride out producer bursts without stalling the
+  # batched-write flush.
+  maxPollRecords: 1500
+  fetchMinBytes: 196608
+  # Phase 5 v2 — override the chart default (200). At 50 ms linger and
+  # 625/s/pod arrivals, steady-state batch size is ~31 records; the 1500
+  # ceiling is for catch-up after a stall, not steady state.
+  batchSize: 1500
+  batchLingerMs: 50

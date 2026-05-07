@@ -17,9 +17,14 @@
 // Verified in setup() — script aborts if the topic is missing.
 //
 // PER-RUNNER PEAK RATES (parallelism=1; one runner pod per TestRun)
-//   silver   ramps 50  →  500 events/s
-//   gold     ramps 250 → 2500 events/s
-//   platinum ramps 530 → 5300 events/s
+//   silver   ramps  80 →  400 events/s
+//   gold     ramps 500 → 2500 events/s
+//   platinum ramps 1000 → 5000 events/s
+// Phase 5 v2 — peaks aligned exactly with the per-tier sustained-throughput
+// expectations (Silver=400/s, Gold=2500/s, Platinum=5000/s). Platinum
+// preAllocatedVUs/maxVUs raised (200→400 / 720→1500) because Phase 5 v1
+// already saw VU exhaustion at 3,238/s offered; the new 5,000/s target
+// would exhaust the old maxVUs=720 immediately.
 //
 // THRESHOLDS — bound to v1-emitted metrics (kafka_writer_*).
 // =====================================================================
@@ -44,9 +49,9 @@ const TOPIC   = `v2.core.accounts.loadtest.${TIER}.${REPO === "postgres" ? "pg" 
 const GROUP   = `hex-scaffold-loadtest-${TIER}-${REPO}-${RUNID}`;
 
 const PROFILES = {
-  silver:   { startRate:  50, peak:  500, preAllocatedVUs:  20, maxVUs:  60 },
-  gold:     { startRate: 250, peak: 2500, preAllocatedVUs: 100, maxVUs: 350 },
-  platinum: { startRate: 530, peak: 5300, preAllocatedVUs: 200, maxVUs: 720 },
+  silver:   { startRate:   80, peak:  400, preAllocatedVUs:  20, maxVUs:   60 },
+  gold:     { startRate:  500, peak: 2500, preAllocatedVUs: 100, maxVUs:  350 },
+  platinum: { startRate: 1000, peak: 5000, preAllocatedVUs: 400, maxVUs: 1500 },
 };
 const P = PROFILES[TIER];
 
