@@ -18,7 +18,15 @@ autoscaling:
   enabled: false
 
 kafka:
-  # Gold: medium fetch batching — broker round-trip starts to matter at the
-  # ~2,500 events/s ceiling, so prefetch + min-bytes both step up.
-  maxPollRecords: 250
-  fetchMinBytes: 32768
+  # Phase 5 v2 — Gold: 2,500 events/s sustained target. With 4 consumer pods
+  # and the new 24-partition topic (PR-B), each pod owns 6 partitions ≈
+  # 625 events/s/pod. The bulk-write coalescing PR (PR-A) needs ≥ 750 records
+  # per poll to land 1+ flush per second per pod with ample headroom.
+  # maxPollRecords (queued.min.messages prefetch) + fetchMinBytes step up
+  # together to amortise broker round-trip cost at the higher rate.
+  maxPollRecords: 750
+  fetchMinBytes: 98304
+  # Phase 5 v2 — override the chart default (200) so each consumer flush
+  # at gold drains a full poll (~1.2 s of arrivals at 625/s/pod).
+  batchSize: 750
+  batchLingerMs: 50

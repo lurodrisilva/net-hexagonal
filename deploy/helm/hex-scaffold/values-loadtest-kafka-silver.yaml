@@ -24,7 +24,10 @@ autoscaling:
   enabled: false
 
 kafka:
-  # Silver: low fetch batching — broker round-trips are cheap relative to
-  # the modest consumer rate, so amortisation gain is minimal.
-  maxPollRecords: 100
-  fetchMinBytes: 16384
+  # Phase 5 v2 — Silver: feed the batched-write consumer enough records per
+  # poll to keep the bulk-write path warm. 200 records × 50 ms linger
+  # comfortably matches the 400 events/s target (200 = 0.5 s of arrivals).
+  # batchSize/batchLingerMs use the chart defaults (200 / 50 ms) so this
+  # tier doesn't need explicit overrides.
+  maxPollRecords: 200
+  fetchMinBytes: 32768
