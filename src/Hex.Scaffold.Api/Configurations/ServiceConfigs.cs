@@ -6,6 +6,7 @@ using Hex.Scaffold.Adapters.Outbound.Messaging;
 using Hex.Scaffold.Adapters.Persistence.Common;
 using Hex.Scaffold.Adapters.Persistence.Extensions;
 using Hex.Scaffold.Api.Options;
+using Hex.Scaffold.Application.Accounts.Batch;
 using Hex.Scaffold.Domain.Ports.Outbound;
 using Microsoft.Extensions.Http.Resilience;
 using Scrutor;
@@ -112,6 +113,10 @@ public static class ServiceConfigs
         };
         return new ConsumerBuilder<string, string>(config).Build();
       });
+      // Bulk-write coalescer for the consumer-poll batch. Only the Kafka
+      // inbound path needs it — REST inbound continues to dispatch through
+      // the per-event Mediator handlers.
+      services.AddScoped<IAccountBatchProcessor, AccountBatchProcessor>();
       services.AddHostedService<AccountEventConsumer>();
     }
 

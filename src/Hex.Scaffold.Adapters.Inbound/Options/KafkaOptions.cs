@@ -33,4 +33,19 @@ public sealed class KafkaOptions
   // compression.type=producer pass-through, giving ~3-4× wire-size reduction on
   // Stripe-shaped JSON payloads at low CPU cost.
   public string CompressionType { get; set; } = "lz4";
+
+  // Max messages per consumer-poll batch. Drives the single-flush size in
+  // IAccountBatchProcessor.ProcessAsync — every message in the batch is
+  // coalesced into ONE IRepository<Account>.SaveBatchAsync round trip.
+  // Default 200 is a conservative starting point; per-tier loadtest overlays
+  // raise this to 750 (gold) / 1500 (platinum). Tune in tandem with
+  // BatchLingerMs: too low and the per-message round-trip cost dominates,
+  // too high and tail latency suffers on light traffic.
+  public int BatchSize { get; set; } = 200;
+
+  // How long the consumer lingers after the FIRST message of a batch waiting
+  // for siblings before flushing. Trade-off: higher = better batching
+  // efficiency, worse tail latency on light traffic. Default 50 ms keeps the
+  // worst-case-empty-queue scenario inside the 200 ms end-to-end SLO.
+  public int BatchLingerMs { get; set; } = 50;
 }

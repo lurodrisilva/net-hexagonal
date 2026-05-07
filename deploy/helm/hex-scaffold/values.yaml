@@ -61,6 +61,15 @@ kafka:
   # See KafkaOptions.cs for the MaxPollRecords→QueuedMinMessages mapping.
   maxPollRecords: 500
   fetchMinBytes: 1
+  # Bulk-write coalescing knobs (Phase 5 v2). The consumer drains up to
+  # batchSize messages per poll (or up to batchLingerMs after the first
+  # arrives, whichever comes first) and flushes the whole batch through
+  # IAccountBatchProcessor.ProcessAsync in a SINGLE SaveBatchAsync round
+  # trip. Defaults match the .NET KafkaOptions defaults; per-tier loadtest
+  # overlays raise batchSize to 750 (gold) / 1500 (platinum). Tune the
+  # linger downward if tail latency on light traffic matters.
+  batchSize: 200
+  batchLingerMs: 50
   # Producer wire-compression codec (none|gzip|snappy|lz4|zstd). Default lz4 —
   # ~3-4× reduction on Stripe-shaped JSON at low CPU cost. Loadtest topic CRs
   # already pin compression.type=lz4 and the broker is set to honour the
