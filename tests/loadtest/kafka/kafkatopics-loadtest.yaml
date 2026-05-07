@@ -33,7 +33,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.silver.pg
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"
@@ -52,7 +52,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.silver.mongo
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"
@@ -71,7 +71,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.gold.pg
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"
@@ -90,7 +90,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.gold.mongo
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"
@@ -109,7 +109,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.platinum.pg
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"
@@ -128,7 +128,7 @@ metadata:
 spec:
   topicName: v2.core.accounts.loadtest.platinum.mongo
   partitions: 12
-  replicas: 3
+  replicas: 2
   config:
     retention.ms: "3600000"
     compression.type: "lz4"

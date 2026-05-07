@@ -5,7 +5,15 @@
 # the transport never bottlenecks the application — see plan §2.2.
 #
 # Topology: 3 combined controller+broker nodes (KRaft simplest viable
-# quorum), each on nodepool3 with managed-csi 50Gi persistent storage.
+# quorum), each on nodepool4 with managed-csi 50Gi persistent storage.
+#
+# Lane isolation (post Phase 5 redo): brokers + Strimzi sidecars (Cruise
+# Control, Entity Operator, Kafka Exporter) live on nodepool4 ONLY.
+# Workload (hex-scaffold app + wiremock) spans nodepool / nodepool2 /
+# nodepool3. Load gen (k6 runners) stays pinned to nodepool3. Sharing
+# nodepool3 across brokers + app + load gen contaminated the Phase 5
+# CPU measurements; nodepool4 dedication restores broker-side signal
+# integrity for the Phase 6 four-quadrant Grafana evidence.
 #
 # Lifecycle: applied once at Phase 5 pre-flight, kept across all 6 runs,
 # deleted at Phase 6 cleanup. Both documents below live in the
@@ -21,7 +29,7 @@ metadata:
     strimzi.io/cluster: hex-scaffold-loadtest
     app.kubernetes.io/component: loadtest
 spec:
-  replicas: 3
+  replicas: 2
   # Combined role — each node serves the KRaft controller quorum AND the
   # broker workload. Acceptable for loadtest scale; production would split
   # into dedicated controller + broker pools.
@@ -35,14 +43,16 @@ spec:
     deleteClaim: true
   resources:
     requests:
-      cpu: "1500m"
-      memory: 4Gi
+      cpu: "500m"
+      memory: 2Gi
     limits:
-      cpu: "2000m"
-      memory: 6Gi
-  # Pin to nodepool3 so brokers + the application + k6 runners share the
-  # same underlay network — keeps loadtest latency measurements free of
-  # cross-nodepool hops.
+      cpu: "1000m"
+      memory: 3Gi
+  # Pin to nodepool4 so brokers are isolated from app workload and load
+  # generation. Phase 5 colocated everything on nodepool3, contaminating
+  # the broker CPU panel; nodepool4 dedication restores broker-side signal
+  # integrity. Pod-level anti-affinity spreads the 2 brokers across
+  # different nodepool4 hosts so a node failure cannot take both replicas.
   template:
     pod:
       metadata:
@@ -56,7 +66,13 @@ spec:
                   - key: agentpool
                     operator: In
                     values:
-                      - nodepool3
+                      - nodepool4
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: hex-scaffold-loadtest
+              topologyKey: kubernetes.io/hostname
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
@@ -74,7 +90,7 @@ metadata:
     app.kubernetes.io/component: loadtest
 spec:
   kafka:
-    version: 3.8.0
+    version: 4.2.0
     # replicas + storage are managed by the KafkaNodePool above; the
     # operator rejects these top-level fields when KRaft + NodePools are
     # both enabled.
@@ -84,11 +100,11 @@ spec:
         type: internal
         tls: false
     config:
-      offsets.topic.replication.factor: 3
-      transaction.state.log.replication.factor: 3
-      transaction.state.log.min.isr: 2
-      default.replication.factor: 3
-      min.insync.replicas: 2
+      offsets.topic.replication.factor: 2
+      transaction.state.log.replication.factor: 2
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 2
+      min.insync.replicas: 1
       # Match the loadtest topic compression to keep producer +
       # broker on the same codec (lz4 is the topic-level default in
       # tests/loadtest/kafka/kafkatopics-loadtest.yaml).
@@ -114,12 +130,23 @@ spec:
     topicRegex: "v2\\.core\\.accounts\\.loadtest\\..*"
     groupRegex: "hex-scaffold-loadtest-.*"
     enableSaramaLogging: false
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: agentpool
+                      operator: In
+                      values:
+                        - nodepool4
   # Cruise Control — broker-capacity values must mirror the NodePool
   # resources, otherwise CC's anomaly detection drifts and rebalance
   # proposals reference the wrong ceilings.
   cruiseControl:
     brokerCapacity:
-      cpu: "2000m"
+      cpu: "800m"
       inboundNetwork: 10000KB/s
       outboundNetwork: 10000KB/s
     resources:
@@ -129,9 +156,31 @@ spec:
       limits:
         cpu: "500m"
         memory: 1Gi
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: agentpool
+                      operator: In
+                      values:
+                        - nodepool4
   entityOperator:
     topicOperator: {}
     userOperator: {}
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: agentpool
+                      operator: In
+                      values:
+                        - nodepool4
 ---
 # JMX exporter pattern set — this is the canonical Strimzi
 # kafka-metrics-config.yml reduced to the metrics the loadtest

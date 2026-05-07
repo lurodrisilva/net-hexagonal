@@ -29,9 +29,19 @@ spec:
       name: hex-scaffold-kafka-loadtest
       file: kafka-account-events-loadtest.js
   runner:
-    image: mostafamoradian/xk6-kafka:latest
+    image: mostafamoradian/xk6-kafka:0.28.0
     nodeSelector:
       agentpool: nodepool3
+    # Sister of testrun-kafka-pg.yaml — see that file for rationale.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: hex-scaffold
+              topologyKey: kubernetes.io/hostname
     env:
       - name: TIER
         value: "__TIER__"
