@@ -70,3 +70,69 @@ metrics:
         - event_type
         - tier
         - repo
+
+# Workload lane isolation for the Phase 5 redo.
+#   - Brokers + Strimzi sidecars live on nodepool4 (see kafka-cluster.yaml).
+#   - Load gen (k6 TestRun runners) is hard-pinned to nodepool3.
+#   - App pods are eligible on nodepool, nodepool2, nodepool3 — preferring
+#     the empty nodepool2 first, then nodepool3, falling back to the system
+#     pool only under capacity pressure.
+#   - Pod anti-affinity spreads app replicas across hosts AND keeps app
+#     replicas off whatever host the k6 runner lands on (soft preference;
+#     nodepool3 has 40 cpu / 160 GB so a hard rule would over-constrain).
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: agentpool
+              operator: In
+              values:
+                - nodepool
+                - nodepool2
+                - nodepool3
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: agentpool
+              operator: In
+              values:
+                - nodepool2
+      - weight: 50
+        preference:
+          matchExpressions:
+            - key: agentpool
+              operator: In
+              values:
+                - nodepool3
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: hex-scaffold
+          topologyKey: kubernetes.io/hostname
+      - weight: 50
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: k6_cr
+                operator: Exists
+          topologyKey: kubernetes.io/hostname
+
+# WireMock affinity — same eligibility set as the app, but no preference
+# weights (WireMock is not on the measurement-critical path).
+wiremock:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: agentpool
+                operator: In
+                values:
+                  - nodepool
+                  - nodepool2
+                  - nodepool3

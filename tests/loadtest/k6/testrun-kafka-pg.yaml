@@ -48,10 +48,23 @@ spec:
   runner:
     # Stock grafana/k6 lacks the xk6-kafka extension — image override
     # is required so the runner can `import { Producer } from "k6/x/kafka"`.
-    image: mostafamoradian/xk6-kafka:latest
+    image: mostafamoradian/xk6-kafka:0.28.0
     # Pin to the dedicated load-generation nodepool (mirrors testrun-pgsql-pp.yaml).
     nodeSelector:
       agentpool: nodepool3
+    # Soft anti-affinity: prefer NOT to land on the same nodepool3 host as
+    # an app pod. Phase 5 redo allows app workload onto nodepool3, so this
+    # keeps the runner away from app replicas when the scheduler has the
+    # option. Required would over-constrain — capacity already comfortable.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: hex-scaffold
+              topologyKey: kubernetes.io/hostname
     env:
       # Orchestrator (Phase 5 driver script) substitutes both placeholders
       # via sed before kubectl apply — same pattern as loadtest-pgsql-pp.sh.
