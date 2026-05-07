@@ -174,7 +174,14 @@ while :; do
   fi
 
   # AI p95 inbound_event_processing_duration_ms via az rest (timeout-wrapped).
-  AI_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and customDimensions.runId == '${RUNID}' | where timestamp > ago(2m) | summarize p95=percentile(value, 95)"
+  #
+  # IMPORTANT: filter on customDimensions.{tier,repo}, NOT runId. The metric's
+  # tag set (`event_type`, `tier`, `repo`) is bounded by the OTel View at
+  # ObservabilityConfig.cs:144-149 to keep cardinality finite — runId is set as
+  # an Activity tag (consumer.cs:98) and lands in `requests` / `dependencies`
+  # customDimensions, never in `customMetrics`. v1/v2/v3 of this driver all
+  # filtered on customDimensions.runId here and got count=0 every iteration.
+  AI_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and customDimensions.tier == '${TIER}' and customDimensions.repo == '${REPO}' | where timestamp > ago(2m) | summarize p95=percentile(value, 95)"
   P95=$(run_with_timeout 25 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_QUERY" --output tsv --query 'tables[0].rows[0][0]' | head -1)
   echo "$(date -u +%FT%TZ) p95_ms=${P95}" >>"${ART_DIR}/ai-p95.log"
   if [ -n "$P95" ] && python3 -c "import sys; sys.exit(0 if float('${P95}') >= 200 else 1)" 2>/dev/null; then
@@ -228,25 +235,32 @@ kubectl exec -n messaging-system hex-scaffold-loadtest-hex-scaffold-loadtest-poo
 # Capture three queries so we can tell which is which:
 # ---------------------------------------------------------------------
 
-# Original — what we EXPECT to be there.
-AI_FINAL_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and customDimensions.runId == '${RUNID}' | summarize p50=percentile(value,50), p95=percentile(value,95), p99=percentile(value,99), count=count()"
-az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_FINAL_QUERY" --output json >"${ART_DIR}/ai-final.json" 2>&1 || true
+# Final p95 — filter on tier+repo (NOT runId, which is not a metric tag —
+# see in-loop AI_QUERY comment). Window covers run + 60 min trail because:
+#   1. Consumer keeps processing lag for many minutes after k6 producer cuts off.
+#   2. App Insights ingestion lag is 5-15 min — records emitted at end-of-run
+#      typically don't appear in customMetrics until well after this driver
+#      has finished. The query is fired BOTH here (best-effort, may be early)
+#      and AGAIN in the optional post-run sweep (`ai-final-late.json` below).
+AI_FINAL_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' | where timestamp between (datetime('${RUN_START_TS}') .. datetime('${RUN_START_TS}')+15m+60m) | where customDimensions.tier == '${TIER}' and customDimensions.repo == '${REPO}' | summarize p50=percentile(value,50), p95=percentile(value,95), p99=percentile(value,99), avg=avg(value), max=max(value), count=count()"
+run_with_timeout 30 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_FINAL_QUERY" --output json >"${ART_DIR}/ai-final.json" 2>&1 || true
 
-# Diag 1 — same metric, ANY runId. If non-zero here but zero above,
-# the runId tag is missing from customDimensions.
-AI_NORID_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and timestamp > ago(30m) | summarize count=count(), p95=percentile(value,95) by tostring(customDimensions.runId), tostring(customDimensions.tier), tostring(customDimensions.repo)"
-az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_NORID_QUERY" --output json >"${ART_DIR}/ai-diag-norid.json" 2>&1 || true
+# Diag 1 — same metric, all tier/repo combos in last 30 min. Surfaces
+# leftover records from prior runs and confirms the metric pipeline at all.
+AI_NORID_QUERY="customMetrics | where name == 'inbound_event_processing_duration_ms' and timestamp > ago(30m) | summarize count=count(), p95=percentile(value,95) by tostring(customDimensions.tier), tostring(customDimensions.repo)"
+run_with_timeout 30 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_NORID_QUERY" --output json >"${ART_DIR}/ai-diag-norid.json" 2>&1 || true
 
 # Diag 2 — top customMetric names in the run window. If our metric isn't
 # in the top list, the app isn't emitting it (US-004 ObservabilityConfig
 # View / OTel meter registration broken).
 AI_NAMES_QUERY="customMetrics | where timestamp > ago(30m) | summarize count=count() by name | top 30 by count"
-az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_NAMES_QUERY" --output json >"${ART_DIR}/ai-diag-names.json" 2>&1 || true
+run_with_timeout 30 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_NAMES_QUERY" --output json >"${ART_DIR}/ai-diag-names.json" 2>&1 || true
 
-# Diag 3 — any traffic for this runId at all (across customMetrics, requests,
-# traces, dependencies). Distinguishes "metric missing" from "AI dropping us".
-AI_TRAFFIC_QUERY="union customMetrics, requests, traces, dependencies | where customDimensions.runId == '${RUNID}' or operation_Name contains 'kafka' | summarize count=count() by itemType"
-az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_TRAFFIC_QUERY" --output json >"${ART_DIR}/ai-diag-traffic.json" 2>&1 || true
+# Diag 3 — any traffic at all in the run window across customMetrics, requests,
+# traces, dependencies. Distinguishes "metric missing" from "AI dropping us".
+# Filter by app role / kafka-related operation name since runId is not a metric tag.
+AI_TRAFFIC_QUERY="union customMetrics, requests, traces, dependencies | where timestamp > ago(30m) | where (cloud_RoleName == 'hex-scaffold' or operation_Name contains 'kafka' or customDimensions.tier == '${TIER}') | summarize count=count() by itemType, cloud_RoleName"
+run_with_timeout 30 az monitor app-insights query --app "$AI_APP_ID" --analytics-query "$AI_TRAFFIC_QUERY" --output json >"${ART_DIR}/ai-diag-traffic.json" 2>&1 || true
 
 # Repo full-window CPU + IOPS
 if [ "$REPO" = "postgres" ]; then

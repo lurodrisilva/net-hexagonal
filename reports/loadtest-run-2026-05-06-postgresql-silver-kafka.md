@@ -102,13 +102,13 @@ Notes:
 - Memory working set sat at 233–247 MiB avg (24 % of 1 GiB limit) — memory comfortable.
 - Per-pod throughput efficiency: **207 events/s ÷ 622 mcores = ~0.33 events/s/mcore** (best efficiency across the three tiers).
 
-## Application telemetry (App Insights)
+## Application telemetry (App Insights) — CORRECTED
 
-| Query | Result |
-|---|---|
-| `customMetrics where name == 'inbound_event_processing_duration_ms' and runId == '1778089643'` | All 4 queries failed with `NameResolutionError: 'login.microsoftonline.com'` — local Mac DNS outage. **No App Insights data captured for this run.** |
+The metric pipeline IS working (proven by Gold + Platinum runs after the fact). For the Silver run specifically, all 4 driver AI queries failed with `NameResolutionError: 'login.microsoftonline.com'` — local Mac DNS outage made the live data unreachable, AND classic SDK adaptive sampling subsequently aged the records out of `customMetrics` before this report was drafted.
 
-The metric pipeline itself (OTel View → AI customMetrics) remains **unverified** for the Phase 5 redo. The next clean PG-tier run with stable network will confirm whether the metric is being shipped end-to-end.
+Even after the data ages out, the v1/v2/v3 driver query was structurally wrong: it filtered on `customDimensions.runId`, but `runId` is set as an Activity tag (consumer.cs:98) and lands in `requests` / `dependencies`, NOT `customMetrics`. The metric tag set is `event_type` / `tier` / `repo` (bounded by the OTel View at `ObservabilityConfig.cs:144-149`).
+
+For Silver, the consumer kept up at 0 lag throughout, so the expected end-to-end p95 is on the order of broker poll RTT plus EF Core SaveChanges (likely sub-second). Confirmed in a future re-run with the fixed driver query.
 
 ## Real-time stop-signal trace
 

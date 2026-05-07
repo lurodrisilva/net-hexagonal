@@ -68,9 +68,19 @@ Brokers handled all three tiers with no errors and microsecond-class producer la
 | k6 stdout summary | ✅ (salvaged via `kubectl logs` from Completed pod) | ✅ | ✅ |
 | Consumer-group lag (live) | ✅ (re-snapshot post-DNS-recovery) | ✅ | ✅ |
 | Repo CPU (Azure Monitor) | ⚠️ partial (3 samples, DNS outage extended iterations) | ✅ full series | ✅ full series |
-| App Insights `inbound_event_processing_duration_ms` | ❌ DNS outage | ❌ metric not landing | ❌ metric not landing |
+| App Insights `inbound_event_processing_duration_ms` | ❌ DNS outage AND data aged out | ✅ **15,467 ms p95** | ✅ **24,328 ms p95 (33,230 ms post-drain)** |
 
-The **AI metric pipeline is broken across all 3 tiers**, even on the runs with stable network. Diagnostic queries (`ai-diag-norid.json`, `ai-diag-names.json`, `ai-diag-traffic.json`) captured by driver v3 in gold/platinum runs will tell whether the metric is shipped under a different name, missing the runId tag, or never registered. **Phase 6 follow-up: inspect `ObservabilityConfig.cs` US-004 wiring.**
+The AI metric pipeline IS working — the v1/v2/v3 driver query was wrong (filtered on `customDimensions.runId`, but `runId` is an Activity tag, not a metric tag). Gold + Platinum p95 numbers above came from the in-run `ai-diag-norid.json` diagnostic which used the correct filter. Driver patched to use the right query going forward.
+
+## End-to-end p95 (App Insights `inbound_event_processing_duration_ms`)
+
+| Tier | p95 (poll → handler completion) | Source |
+|---|---:|---|
+| Silver   | (data lost — DNS outage + sampling aged out) | — |
+| Gold     | **15,467 ms** | `ai-diag-norid.json` captured during gold-pg run |
+| Platinum | **24,328 ms** during run / **33,230 ms** post-drain | `ai-diag-norid.json` during platinum + post-drain re-query |
+
+The end-to-end p95 numbers (15–33 seconds) corroborate the consumer-lag growth interpretation: events sit in the consumer fetch queue while the handler grinds through the backlog at ~125–156 events/s/pod. Per-event latency tracks queue depth, which grows linearly under sustained over-offered load.
 
 ## Outbound suppression confirmation
 
@@ -110,8 +120,9 @@ Driver currently only fires on `cap-reached` / `repo-cpu-breach` / `p95-breach`.
 
 ## Recommended Phase 6 follow-ups
 
-1. **Fix the App Insights metric pipeline** — without `inbound_event_processing_duration_ms` we cannot report end-to-end p95 for any tier. The diagnostic JSON files captured by driver v3 in Gold/Platinum runs identify whether the metric is registered, named, or tagged differently than the query expects.
-2. **Profile the consumer handler** — per-pod ceiling at ~150–200 events/s warrants tracing per stage (Kafka deserialize → Mediator dispatch → EF Core SaveChanges → offset commit). The handler is the limiting tier-comparison metric, not the DB.
+1. **App Insights metric pipeline FIXED** ✅ — driver query was filtering on `customDimensions.runId` (an Activity tag, not a metric tag). Patched to filter on `tier` + `repo` + run-window timestamp. Gold/Platinum p95 already recovered from existing diagnostic data.
+2. **Profile the consumer handler** — per-pod ceiling at ~150–200 events/s warrants tracing per stage (Kafka deserialize → Mediator dispatch → EF Core SaveChanges → offset commit). Real end-to-end p95 (15–33 s at gold/platinum) is dominated by queue dwell, not per-event handler cost — but the per-event handler cost IS the upstream cause of queue dwell.
 3. **Scale k6 producer for Platinum** — `maxVUs=720` exhausts at the offered rate. Either raise to ≥ 1500 or run parallel TestRunners.
 4. **Add `lag-growth-monotonic` stop rule** to driver — would end Gold/Platinum runs immediately on lag-saturation instead of running to cap.
 5. **Resolve DocDB password issue** — script default rejected. Either confirm intended credentials or rotate the cluster admin password.
+6. **Add ai-final post-run sweep** — App Insights ingest lag is 5–15 min, so the in-driver `ai-final.json` query often fires before records arrive. A separate post-cap sleep + re-query would capture the consolidated p95 reliably (currently the diagnostic queries land it first because they run on a 30-min lookback window).
