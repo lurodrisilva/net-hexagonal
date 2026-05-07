@@ -25,4 +25,12 @@ public sealed class KafkaOptions
   // the library default — fetch returns immediately. Per-tier loadtest
   // overlays raise this to amortise broker round-trip cost at high throughput.
   public int FetchMinBytes { get; set; } = 1;
+
+  // Producer wire-compression codec (Confluent.Kafka ProducerConfig.CompressionType).
+  // Accepted values: "none", "gzip", "snappy", "lz4", "zstd". Bound case-insensitively
+  // to Confluent.Kafka.CompressionType in ServiceConfigs.cs; unknown values fall back
+  // to lz4. Default lz4 — matches the loadtest topic config and the broker's
+  // compression.type=producer pass-through, giving ~3-4× wire-size reduction on
+  // Stripe-shaped JSON payloads at low CPU cost.
+  public string CompressionType { get; set; } = "lz4";
 }

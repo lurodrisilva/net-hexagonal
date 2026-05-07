@@ -48,6 +48,7 @@ data:
   Kafka__InboundTopic:      {{ .Values.kafka.inboundTopic | quote }}
   Kafka__MaxPollRecords:    {{ .Values.kafka.maxPollRecords | quote }}
   Kafka__FetchMinBytes:     {{ .Values.kafka.fetchMinBytes | quote }}
+  Kafka__CompressionType:   {{ .Values.kafka.compressionType | quote }}
 
   # --- Rate limiter (fixed window, per-IP) ----------------------------------
   RateLimit__PermitLimit:    {{ .Values.rateLimit.permitLimit    | quote }}

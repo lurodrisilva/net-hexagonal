@@ -13,6 +13,11 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="MongoDB.Driver" />
     <PackageReference Include="MongoDB.Driver.Core.Extensions.DiagnosticSources" />
+    <!-- Direct reference forces the Snappier override pinned in -->
+    <!-- Directory.Packages.props (1.3.1) over MongoDB.Driver 3.4.0's transitive -->
+    <!-- pull of Snappier 1.0.0, which trips NU1903 (GHSA-pggp-6c3x-2xmx) on the -->
+    <!-- audit-enforcing CI build. -->
+    <PackageReference Include="Snappier" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Scrutor" />
     <PackageReference Include="StackExchange.Redis" />

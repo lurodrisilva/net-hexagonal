@@ -69,11 +69,15 @@ public static class ServiceConfigs
       services.AddSingleton<IProducer<string, string>>(sp =>
       {
         var options = sp.GetRequiredService<IOptions<KafkaOptions>>().Value;
+        var compression = Enum.TryParse<CompressionType>(options.CompressionType, ignoreCase: true, out var parsed)
+          ? parsed
+          : CompressionType.Lz4;
         var config = new ProducerConfig
         {
           BootstrapServers = options.BootstrapServers,
           Acks = Acks.All,
-          EnableIdempotence = true
+          EnableIdempotence = true,
+          CompressionType = compression
         };
         return new ProducerBuilder<string, string>(config).Build();
       });
