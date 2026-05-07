@@ -61,6 +61,12 @@ kafka:
   # See KafkaOptions.cs for the MaxPollRecords→QueuedMinMessages mapping.
   maxPollRecords: 500
   fetchMinBytes: 1
+  # Producer wire-compression codec (none|gzip|snappy|lz4|zstd). Default lz4 —
+  # ~3-4× reduction on Stripe-shaped JSON at low CPU cost. Loadtest topic CRs
+  # already pin compression.type=lz4 and the broker is set to honour the
+  # producer codec (kafka-cluster.yaml: compression.type=producer), so this
+  # default keeps the producer aligned end-to-end.
+  compressionType: "lz4"
   # Azure Application Insights connection string. Leave empty to disable the
   # Azure Monitor exporter (the OTLP pipeline still runs). Inject via a real
   # SecretProviderClass / ExternalSecret in production.
