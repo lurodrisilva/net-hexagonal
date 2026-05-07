@@ -50,7 +50,7 @@ Mix: 70% Created / 25% Updated / 5% Deleted.
 | `kafka_writer_retries_count` | 0 | k6 |
 | VUs max actually used | **720 of 720** | k6 — exhausted preAllocated pool |
 | **Consumed events/s (steady)** | **~1,248** | (sum CURRENT-OFFSET) / elapsed |
-| **End-to-end p95** | **unavailable** | App Insights metric still not landing |
+| **End-to-end p95 (poll → handler completion)** | **24,328 ms during run / 33,230 ms post-run drain** | App Insights `customMetrics`, filter `tier='platinum' and repo='postgres'` (corrected query) |
 | **Limiting metric** | **DUAL: k6 producer + app consumer**; k6 dropped 253k iter (could not produce target rate); app consumer kept growing lag | observation |
 | Stop condition fired | `cap-reached` (15 min wall-clock) |
 
@@ -115,14 +115,18 @@ Notes:
 
 The Platinum tier consumer is **CPU-active but with massive headroom** (61 % CPU unused under the 4-cpu limit per pod). As at Gold, this rules out CPU as the primary bottleneck and reinforces the intra-handler serialization hypothesis. The fact that per-pod throughput is even worse than Gold (despite more aggressive fetch settings: `maxPollRecords=500`, `fetchMinBytes=65536`) suggests fetch batch processing itself is adding per-event overhead — likely the larger batch incurs more bookkeeping per Mediator dispatch or per EF Core SaveChanges round-trip.
 
-## Application telemetry (App Insights)
+## Application telemetry (App Insights) — CORRECTED
 
-| Query | Result |
-|---|---|
-| `customMetrics where name == 'inbound_event_processing_duration_ms' and runId == '1778111250'` | empty |
-| Diagnostic queries (norid / names / traffic) | captured in `ai-diag-*.json` |
+The metric pipeline IS working — the v1/v2/v3 driver query was wrong. It filtered on `customDimensions.runId`, but `runId` is set as an Activity tag (consumer.cs:98) and lands in `requests` / `dependencies`, NOT `customMetrics`. Driver patched to filter on `tier` + `repo` + run-window timestamp.
 
-The OTel pipeline still does not land the inbound event-processing latency metric. Phase 6 follow-up required.
+Re-queried after the fact (records arrive in `customMetrics` with 5–15 min ingest lag because of classic SDK adaptive sampling at `MaxItemsPerSecond=50`):
+
+| Window | Records | p95 | max | avg |
+|---|---:|---:|---:|---:|
+| During run window (`23:47:30Z..00:03:13Z`) | 360 | **24,328 ms** | — | — |
+| Post-drain window (`00:18:39Z..00:40:41Z`) | 192 | **33,230 ms** | 33,607 ms | 13,884 ms |
+
+The end-to-end p95 = **24–33 seconds** at Platinum confirms the lag-derived bottleneck story: at 1,248 events/s consumed against 3,238 events/s offered, queue depth grows linearly and per-event latency tracks queue depth. Records continued arriving for ~37 min after the producer cut off (00:03:13 → 00:40:41) because the consumer was still draining the 1.76 M lag built up during the run.
 
 ## k6 producer-side analysis
 

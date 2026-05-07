@@ -48,7 +48,7 @@ Mix: 70% Created / 25% Updated / 5% Deleted.
 | `kafka_writer_retries_count` | 0 | k6 |
 | VUs max actually used | 7 of 100 | k6 (production was easy on k6) |
 | **Consumed events/s (steady)** | **~502** | (sum CURRENT-OFFSET) / elapsed |
-| **End-to-end p95** | **unavailable** | App Insights `inbound_event_processing_duration_ms` returned 0 rows; metric still not landing |
+| **End-to-end p95 (poll → handler completion)** | **15,467 ms** | App Insights `customMetrics`, filter `tier='gold' and repo='postgres'` (driver v3 query was wrong — see Application telemetry section below) |
 | **Limiting metric** | **app consumer throughput** | lag grew monotonically from 0 → 1.42M; producer + broker + DB all had headroom |
 | Saturation point | consumer saturates at ~125 events/s/pod (4 pods × 125 ≈ 502/s) | derived |
 | In 60–80% saturation band | **N/A** — DB never reached saturation; bottleneck moved upstream to consumer handler |
@@ -110,16 +110,21 @@ Notes:
 
 The Gold tier consumer is **CPU-active but not CPU-starved**: it has ~54 % CPU headroom under the 2-cpu limit yet still cannot keep up with the producer rate. This rules out CPU as the primary bottleneck and points at intra-handler serialization (e.g., synchronous EF Core write blocking the fetch loop, or single-flight per-partition Mediator dispatch) as the likely cause.
 
-## Application telemetry (App Insights)
+## Application telemetry (App Insights) — CORRECTED
 
-| Query | Result |
+The metric pipeline IS working — the v1/v2/v3 driver query was wrong. It filtered on `customDimensions.runId`, but `runId` is set as an Activity tag (consumer.cs:98) and lands in `requests` / `dependencies`, NOT `customMetrics`. The metric's tag set is `event_type` / `tier` / `repo` (bounded by the OTel View at `ObservabilityConfig.cs:144-149` for cardinality budget).
+
+Re-queried with corrected filter (`tier == 'gold' and repo == 'postgres'`, captured by the in-run diagnostic query stored in `ai-diag-norid.json`):
+
+| Metric | Value |
 |---|---|
-| `customMetrics where name == 'inbound_event_processing_duration_ms' and runId == '1778110300'` | empty |
-| `customMetrics same name, any runId in last 30 min` | (driver v3 captures this in `ai-diag-norid.json`) |
-| Top customMetric names in window | (in `ai-diag-names.json`) |
-| Any traffic for runId | (in `ai-diag-traffic.json`) |
+| Records ingested for gold/postgres | **180** |
+| **End-to-end p95 (poll → handler completion)** | **15,467 ms** |
+| **End-to-end p99** | (not captured — single-percentile diagnostic) |
 
-The application's OTel pipeline still does not appear to deliver `inbound_event_processing_duration_ms` to App Insights. Possible causes: meter not registered, OTel View dropping the metric, sampling collapsing it. Phase 6 follow-up: inspect `ObservabilityConfig.cs` US-004 wiring.
+The end-to-end p95 = **15.5 seconds** at Gold tier confirms what the consumer-lag growth implied: events sit in the consumer fetch queue for ~15 s before the handler completes. This is consistent with the per-pod 125 events/s consumption ceiling against a 2070 events/s offered rate — the queue depth grows linearly until lag-derived latency dominates.
+
+Driver patched (post-PR-#59) to use the correct filter going forward; existing runs' diagnostic queries already captured the data.
 
 ## Real-time stop-signal trace
 
