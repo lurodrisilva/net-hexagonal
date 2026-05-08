@@ -187,3 +187,21 @@ For PG specifically: the upgrade D8 → D16 dropped p95 latency further when pai
 - **PG D16 is over-provisioned for this app footprint.** 5,107 RPS at 24.18% CPU = ~4 vCPU effectively used on a 16 vCPU server. Latency improved sharply (~50% lower than D8) but RPS stayed flat — the upgrade buys headroom and tighter latency, not throughput. PG Gold (D4ds_v5) is likely the cost-optimal tier for this CRUD shape with a matched app footprint.
 - **PG Platinum+ caps at ~5,107 RPS at the current offered ramp — across 3 cluster shapes (~22 / ~22 / ~52 vCPU app capacity).** The third run (nodepool3 expanded 2 → 5 × D8s_v6) **falsified** the Run-2 diagnosis that cluster CPU was the binding constraint: tripling the available app vCPU did not move RPS, but it dropped PG's p95 latency by ~95% across all four CRUD verbs (create 26 ms median, list 9 ms). The actual ceiling is upstream of the cluster, the DB, and the HPA — most likely the k6 offered ramp itself, the kube-proxy/ClusterIP path, or an internal serialisation point in the EF Core / Npgsql request edge. **Next test:** raise the k6 `peak` rate (3000 → 6000 iter/sec/runner) — if that doesn't move RPS the cap is in the network or the app, not the load generator.
 - **At Platinum+ compute the cross-engine gap to Mongo (10k vs 5k RPS) survives a 2.4× cluster CPU expansion on the PG side**, so the layer producing the gap is *upstream* of cluster CPU. Driver/ORM efficiency is still a candidate, but at PG's 24% DB CPU + ~10% pod CPU in Run 3 it can't be a CPU story alone — likely a contention/serialisation pattern in the request path that Mongo's driver doesn't exhibit. Worth profiling with end-to-end traces before another DB SKU bump.
+
+## Monthly cost comparison (Azure Retail Prices, Brazil South, USD)
+
+| Tier | Repo | Persistence | Pods @ peak | App share | DB subtotal | App subtotal | Total retail/mo | Total -25%/mo |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| Bronze | PG | B1MS / 32 GiB Std | 4–8 | 37.5% | $32.54 | $44.07 | $76.61 | $57.46 |
+| Silver | PG | D2ds_v5 / 128 GiB Std SSD | 6–12 | 56.25% | $203.17 | $66.20 | $269.37 | $202.03 |
+| Gold | PG | D4ds_v5 / 128 GiB PMD V2 | 8–16 | 75% | $698.37 | $88.15 | $786.52 | $589.89 |
+| Platinum | PG | D8ds_v5 / 128 GiB PMD V2 | 4–16 | 128% | $1,048.77 | $150.50 | $1,199.27 | $899.45 |
+| Platinum+ | PG | D16ds_v5 / 128 GiB PMD V2 | 24–128 | 640% | $1,777.54 | $751.81 | $2,529.35 | $1,897.01 |
+| Bronze | DocDB | M10 / 32 GiB (est.) | 4–8 | 37.5% | ~$36.50 | $44.07 | ~$80.57 | ~$60.44 |
+| Silver | DocDB | M20 / 32 GiB (est.) | 6–12 | 56.25% | ~$73.00 | $66.20 | ~$139.20 | ~$104.40 |
+| Gold (M30, hist.) | DocDB | M30 / 32 GiB (est.) | 8–16 | 75% | ~$146.00 | $88.15 | ~$234.15 | ~$175.61 |
+| Gold (M40) | DocDB | M40 / 32 GiB (est.) | 8–16 | 112.5% | ~$292.00 | $132.22 | ~$424.22 | ~$318.17 |
+| Platinum (M50) | DocDB | M50 / 32 GiB (est.) | 4–16 | 150% | ~$584.00 | $176.30 | ~$760.30 | ~$570.22 |
+| Platinum+ (M60) | DocDB | M60 / 32 GiB (est.) | 24–128 | 640% | ~$1,168.00 | $751.81 | ~$1,919.81 | ~$1,439.86 |
+
+Methodology: persistence + app pro-rated by peak resource consumption (HPA-bounded for REST, fixed Deployment for Kafka). Binding dimension = max(CPU%, Mem%) of `Standard_D2s_v6` node capacity (2 vCPU / 8 GiB / Linux / Brazil South / $0.161/h). DocDB Mxx unit prices are estimated. 25% uniform discount; real EA/MCA/CSP agreements discount per-meter.

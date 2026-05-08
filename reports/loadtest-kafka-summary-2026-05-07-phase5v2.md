@@ -128,3 +128,16 @@ Driver shell: same v3 + AI-fix + `P95_BREACH_THRESHOLD_MS` env-var as Phase 5 v1
 | Per-run reports for 3 DocDB tiers (v2) | ✅ `reports/loadtest-run-2026-05-07-documentdb-{silver,gold,platinum}-kafka-phase5v2.md` |
 | PG-only summary (v2) | ✅ `reports/loadtest-kafka-summary-postgresql-2026-05-07-phase5v2.md` |
 | Consolidated PG + DocDB summary (v2) | ✅ this file |
+
+## Monthly cost comparison (Azure Retail Prices, Brazil South, USD)
+
+| Tier | Repo | Persistence | Pods @ peak | App share | DB subtotal | App subtotal | Total retail/mo | Total -25%/mo |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| Silver | PG | D2ds_v5 / 128 GiB Std SSD | 2 | 100% | $203.17 | $117.53 | $320.70 | $240.53 |
+| Silver | DocDB | M20 / 32 GiB (est.) | 2 | 100% | ~$73.00 | $117.53 | ~$190.53 | ~$142.90 |
+| Gold | PG | D4ds_v5 / 128 GiB PMD V2 | 4 | 200% | $698.37 | $235.06 | $933.43 | $700.08 |
+| Gold | DocDB | M30 / 32 GiB (est.) | 4 | 200% | ~$146.00 | $235.06 | ~$381.06 | ~$285.80 |
+| Platinum | PG | D8ds_v5 / 128 GiB PMD V2 | 8 | 400% | $1,048.77 | $470.12 | $1,518.89 | $1,139.17 |
+| Platinum | DocDB | M50 / 32 GiB (est.) | 8 | 400% | ~$584.00 | $470.12 | ~$1,054.12 | ~$790.59 |
+
+Methodology: persistence + app pro-rated by peak resource consumption (HPA-bounded for REST, fixed Deployment for Kafka). Binding dimension = max(CPU%, Mem%) of `Standard_D2s_v6` node capacity (2 vCPU / 8 GiB / Linux / Brazil South / $0.161/h). DocDB Mxx unit prices are estimated. 25% uniform discount; real EA/MCA/CSP agreements discount per-meter.

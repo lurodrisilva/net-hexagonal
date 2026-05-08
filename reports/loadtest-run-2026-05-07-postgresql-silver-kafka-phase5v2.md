@@ -105,3 +105,51 @@ Per-pod Container Insights `Perf` data **not captured this batch** — driver di
 ## Artifacts
 
 `.omc/research/kafka-loadtest/silver-pg-1778181550/`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 2 consumer pods | 2 |
+| CPU reserved at peak | 2 × cpu=1000m | 2000m |
+| Memory reserved at peak | 2 × memory=1Gi | 2048 Mi (2 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 2000m / 2000m = 100.0%
+- Memory: 2048 Mi / 8192 Mi = 25.0%
+- **CPU binds** at 100.0%; pro-rate share = 1.0
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex GP Dadsv5 2 vCore (`Standard_D2ds_v5`) | 0.2400 | 0.18000 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D2ds_v5 compute | 0.2400 × 730 | 175.20 | 131.40 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 203.17 | 152.38 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 1.0 | 117.53 | 88.15 |
+| App subtotal | | 117.53 | 88.15 |
+| **Silver Kafka v2 + PG total** | | **$320.70** | **$240.53** |
+
+Savings: $80.17/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (consumer Deployment, not HPA-bounded).
+- CPU binds (100.0%); pro-rate share = 1.0 (exactly one D2s_v6 node).
+- v2 requests bumped vs v1 (1000m/1Gi vs 250m/256Mi) to support bulk-write coalescing path (PR #66 + PR #68).
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share treated as multiplier.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (Strimzi MSK or self-hosted — separate budget line).
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

@@ -100,3 +100,49 @@ Artifacts:
 3. **Memory is over-provisioned for the workload** — 46.9% peak on 32 GiB. The next sensible Mongo tier study would target a memory-bound workload (large working sets), not this small-doc CRUD shape.
 4. **List p95 1393 ms tail** at 11:05 is the cold-cache cost of cursor-paginated reads at the start of the peak hold — by 11:06 it dropped to 519 ms. Predictable shape; not a regression.
 5. **Connection-pool sizing fix (PR #42) prevented the M30/M40-style overcommit.** Server-side latency stayed at 3–4 ms throughout the peak hold, confirming the diagnosis: the earlier elevated p95s on Gold/M40 were *app-side queueing* from MaxPoolSize=200 × pod-count overcommit, not DB latency.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 32 |
+| CPU reserved at peak | 32 × cpu=80m | 2560m |
+| Memory reserved at peak | 32 × memory=384Mi | 12288 Mi (12 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 2560m / 2000m = 128.0%
+- Memory: 12288 Mi / 8192 Mi = 150.0% **← binding**
+- Pro-rate share = 1.50 (app spans ~1.5 D2s_v6 nodes)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M50 Compute | N/A — estimated | N/A — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M50 compute (estimated) | ~$0.80/hr × 730 | ~584.00 | ~438.00 |
+| DocDB storage 32 GiB (included in M50) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~584.00 | ~438.00 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 1.50 | 176.30 | 132.22 |
+| App subtotal | | 176.30 | 132.22 |
+| **Platinum (M50) REST + DocDB total** | | **~$760.30** | **~$570.22** |
+
+Savings: ~$190.08/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (150.0%) over CPU (128.0%); pro-rate = 1.50 — app spans ~1.5 D2s_v6 nodes.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- **Cosmos DB for MongoDB vCore M50 is NOT listed in the Azure Retail Prices API (`prices.azure.com`) for brazilsouth as of 2026-05-07. The ~$0.80/hr figure is an estimate; verify at https://azure.microsoft.com/pricing/details/cosmos-db/mongodb/ before use in billing models.**
+- M50 HA (zone-redundant standby) included; estimate reflects HA-enabled cluster price.
+- M50 replaced M40 as the canonical Platinum tier (in-place upgrade); 32 GiB disk included in compute price.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

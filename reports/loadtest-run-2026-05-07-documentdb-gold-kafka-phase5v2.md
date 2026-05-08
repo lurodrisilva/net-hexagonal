@@ -113,3 +113,47 @@ Per-pod Container Insights `Perf` data **not captured this batch** — driver di
 ## Artifacts
 
 `.omc/research/kafka-loadtest/gold-mongo-1778185316/`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 4 consumer pods | 4 |
+| CPU reserved at peak | 4 × cpu=1000m | 4000m |
+| Memory reserved at peak | 4 × memory=1Gi | 4096 Mi (4 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 4000m / 2000m = 200.0%
+- Memory: 4096 Mi / 8192 Mi = 50.0%
+- **CPU binds** at 200.0%; pro-rate share = 2.0 (workload spans multiple D2s_v6 nodes — share = node multiplier)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M30 Compute | 0.20 — estimated | 0.15 — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M30 compute (estimated) | ~$0.20/h × 730 | ~146.00 | ~109.50 |
+| DocDB storage 32 GiB (included in M30) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~146.00 | ~109.50 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 2.0 | 235.06 | 176.30 |
+| App subtotal | | 235.06 | 176.30 |
+| **Gold Kafka v2 + DocDB total** | | **~$381.06** | **~$285.80** |
+
+Savings: ~$95.26/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (not HPA-bounded).
+- CPU binds (200.0%); pro-rate uses binding dimension.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share = node multiplier.
+- DocDB M30 unit price estimated — Cosmos DB for MongoDB vCore tiers are not a single per-tier line in the public Retail Prices API; values consistent with public Cosmos DB MongoDB vCore pricing tables.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (separate budget line).
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

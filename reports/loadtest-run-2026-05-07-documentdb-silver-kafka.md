@@ -188,3 +188,47 @@ Per-pod CPU stayed wildly low (117–154 m of 1000 m budget) because the .NET ha
 - `ai-final.json`, `ai-diag-*.json`, `ai-p95.log` — App Insights queries (corrected filter)
 - `summary.json`, `meta.json` — run metadata
 - `helm.log`, `rollout.log`, `testrun.yaml`, `cleanup.log`, `run.log`, `poll.log`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 2 consumer pods | 2 |
+| CPU reserved at peak | 2 × cpu=250m | 500m |
+| Memory reserved at peak | 2 × memory=256Mi | 512 Mi (0.5 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 500m / 2000m = 25.0%
+- Memory: 512 Mi / 8192 Mi = 6.25%
+- **CPU binds** at 25.0%; pro-rate share = 0.25
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M20 Compute | 0.10 — estimated | 0.075 — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M20 compute (estimated) | ~$0.10/h × 730 | ~73.00 | ~54.75 |
+| DocDB storage 32 GiB (included in M20) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~73.00 | ~54.75 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.25 | 29.38 | 22.04 |
+| App subtotal | | 29.38 | 22.04 |
+| **Silver Kafka v1 + DocDB total** | | **~$102.38** | **~$76.79** |
+
+Savings: ~$25.59/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (not HPA-bounded).
+- CPU binds (25.0%); pro-rate uses binding dimension.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share = node multiplier.
+- DocDB M20 unit price estimated — Cosmos DB for MongoDB vCore tiers are not a single per-tier line in the public Retail Prices API; values consistent with public Cosmos DB MongoDB vCore pricing tables.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (separate budget line).
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

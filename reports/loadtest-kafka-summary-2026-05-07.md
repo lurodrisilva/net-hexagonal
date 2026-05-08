@@ -142,3 +142,16 @@ Mongo per-mcore numbers are 5–7× higher than PG per-mcore numbers — but tha
 6. **Add `ai-final` post-run sweep** — App Insights ingest lag is 5–15 min, so the in-driver `ai-final.json` query often fires before records arrive. A separate post-cap sleep + re-query would capture the consolidated p95 reliably.
 7. **Resize DocDB silver upward** — only DocDB silver hit the DB-bound regime (53 % CPU). If silver is meant to represent a realistic small-tenant SKU, that's expected; if it's meant to mirror PG silver headroom, the SKU needs +1 size.
 8. **Re-test PG with corrected AI query end-to-end** — Re-running the 3 PG tiers under the v3+AI-fix driver would yield comparable p50/p95/p99/max against the Mongo set (current PG set has only single-percentile diagnostics).
+
+## Monthly cost comparison (Azure Retail Prices, Brazil South, USD)
+
+| Tier | Repo | Persistence | Pods @ peak | App share | DB subtotal | App subtotal | Total retail/mo | Total -25%/mo |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| Silver | PG | D2ds_v5 / 128 GiB Std SSD | 2 | 25% | $203.17 | $29.38 | $232.55 | $174.42 |
+| Silver | DocDB | M20 / 32 GiB (est.) | 2 | 25% | ~$73.00 | $29.38 | ~$102.38 | ~$76.79 |
+| Gold | PG | D4ds_v5 / 128 GiB PMD V2 | 4 | 100% | $698.37 | $117.53 | $815.90 | $611.93 |
+| Gold | DocDB | M30 / 32 GiB (est.) | 4 | 100% | ~$146.00 | $117.53 | ~$263.53 | ~$197.65 |
+| Platinum | PG | D8ds_v5 / 128 GiB PMD V2 | 8 | 400% | $1,048.77 | $470.12 | $1,518.89 | $1,139.17 |
+| Platinum | DocDB | M50 / 32 GiB (est.) | 8 | 400% | ~$584.00 | $470.12 | ~$1,054.12 | ~$790.59 |
+
+Methodology: persistence + app pro-rated by peak resource consumption (HPA-bounded for REST, fixed Deployment for Kafka). Binding dimension = max(CPU%, Mem%) of `Standard_D2s_v6` node capacity (2 vCPU / 8 GiB / Linux / Brazil South / $0.161/h). DocDB Mxx unit prices are estimated. 25% uniform discount; real EA/MCA/CSP agreements discount per-meter.

@@ -126,3 +126,13 @@ Driver currently only fires on `cap-reached` / `repo-cpu-breach` / `p95-breach`.
 4. **Add `lag-growth-monotonic` stop rule** to driver — would end Gold/Platinum runs immediately on lag-saturation instead of running to cap.
 5. **Resolve DocDB password issue** — script default rejected. Either confirm intended credentials or rotate the cluster admin password.
 6. **Add ai-final post-run sweep** — App Insights ingest lag is 5–15 min, so the in-driver `ai-final.json` query often fires before records arrive. A separate post-cap sleep + re-query would capture the consolidated p95 reliably (currently the diagnostic queries land it first because they run on a 30-min lookback window).
+
+## Monthly cost comparison (Azure Retail Prices, Brazil South, USD)
+
+| Tier | Repo | Persistence | Pods @ peak | App share | DB subtotal | App subtotal | Total retail/mo | Total -25%/mo |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| Silver | PG | D2ds_v5 / 128 GiB Std SSD | 2 | 25% | $203.17 | $29.38 | $232.55 | $174.42 |
+| Gold | PG | D4ds_v5 / 128 GiB PMD V2 | 4 | 100% | $698.37 | $117.53 | $815.90 | $611.93 |
+| Platinum | PG | D8ds_v5 / 128 GiB PMD V2 | 8 | 400% | $1,048.77 | $470.12 | $1,518.89 | $1,139.17 |
+
+Methodology: persistence + app pro-rated by peak resource consumption (HPA-bounded for REST, fixed Deployment for Kafka). Binding dimension = max(CPU%, Mem%) of `Standard_D2s_v6` node capacity (2 vCPU / 8 GiB / Linux / Brazil South / $0.161/h). DocDB Mxx unit prices are estimated. 25% uniform discount; real EA/MCA/CSP agreements discount per-meter.

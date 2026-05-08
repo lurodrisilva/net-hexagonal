@@ -102,6 +102,60 @@ CPU rose monotonically through the peak hold but never crossed 25%. Memory plate
 
 The cross-engine difference at this scale is **not the database** — it's how each engine's request-processing path on the *app side* (driver, ORM, network) consumes app-pod CPU. Mongo's request handling on the same number of pods left more CPU per RPS for higher throughput; PG's EF Core path consumes more CPU per request, so each pod handles fewer RPS for similar HPA pressure.
 
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max (hit) | 64 |
+| CPU reserved at peak | 64 × cpu=200m | 12800m |
+| Memory reserved at peak | 64 × memory=512Mi | 32768 Mi (32 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 12800m / 2000m = 640.0% **← binding**
+- Memory: 32768 Mi / 8192 Mi = 400.0%
+- Pro-rate share = 6.40 (app spans ~6.4 D2s_v6 nodes)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex `D16ds_v5` GP Dadsv5 Series Compute (16 vCore) | 1.9200 | 1.44000 | 1 Hour |
+| PG Flex PMD V2 Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex PMD V2 IOPS Provisioned | 0.0400 | 0.03000 | 1 IOPS/Month |
+| PG Flex PMD V2 Throughput Provisioned | 0.1600 | 0.12000 | 1 MBps/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D16ds_v5 compute | 1.92 × 730 | 1401.60 | 1051.20 |
+| PG storage 256 GiB | 0.2185 × 256 | 55.94 | 41.95 |
+| PG storage 6000 IOPS | 0.04 × 6000 | 240.00 | 180.00 |
+| PG storage 500 MBps throughput | 0.16 × 500 | 80.00 | 60.00 |
+| PG backup ≤ 256 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 1777.54 | 1333.15 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 6.40 | 751.81 | 563.86 |
+| App subtotal | | 751.81 | 563.86 |
+| **Platinum+ REST + PG total** | | **$2529.35** | **$1897.01** |
+
+Savings: $632.34/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- CPU binds (640%) over Memory (400%); pro-rate = 6.40 — app footprint spans ~6.4 D2s_v6 nodes. HPA hit its 64-replica ceiling, making the app tier the actual throughput cap.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- PG Flex GP Dadsv5 Series priced per vCore/hour; D16ds_v5 = 16 vCore × $0.12/vCore/hr = $1.92/hr (brazilsouth retail).
+- Premium SSD v2 storage metered separately: capacity + provisioned IOPS + provisioned throughput.
+- HA disabled on this server; production ZoneRedundant HA would double the compute line.
+- App cost dominates at Platinum+ (app $751 vs DB $1778); the DB is over-provisioned relative to what the app tier can drive.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.
+
 ## Repro
 
 ```bash

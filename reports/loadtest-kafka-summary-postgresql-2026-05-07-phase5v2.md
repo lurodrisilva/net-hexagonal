@@ -78,3 +78,13 @@ Zero pod restarts across all tiers. The bulk-write path reduces per-pod CPU belo
 | Fix driver DocDB metric name (`CpuPercent` not `RequestUnitsConsumed`) | Open |
 | Raise `kafka_writer` k6.log capture reliability | Open — 5 of 6 runs had empty k6.log; driver race on Completed pods |
 | Add `lag-growth-monotonic` stop rule to driver | Open |
+
+## Monthly cost comparison (Azure Retail Prices, Brazil South, USD)
+
+| Tier | Repo | Persistence | Pods @ peak | App share | DB subtotal | App subtotal | Total retail/mo | Total -25%/mo |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| Silver | PG | D2ds_v5 / 128 GiB Std SSD | 2 | 100% | $203.17 | $117.53 | $320.70 | $240.53 |
+| Gold | PG | D4ds_v5 / 128 GiB PMD V2 | 4 | 200% | $698.37 | $235.06 | $933.43 | $700.08 |
+| Platinum | PG | D8ds_v5 / 128 GiB PMD V2 | 8 | 400% | $1,048.77 | $470.12 | $1,518.89 | $1,139.17 |
+
+Methodology: persistence + app pro-rated by peak resource consumption (HPA-bounded for REST, fixed Deployment for Kafka). Binding dimension = max(CPU%, Mem%) of `Standard_D2s_v6` node capacity (2 vCPU / 8 GiB / Linux / Brazil South / $0.161/h). DocDB Mxx unit prices are estimated. 25% uniform discount; real EA/MCA/CSP agreements discount per-meter.

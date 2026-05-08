@@ -109,3 +109,49 @@ Artifacts:
 4. **Server-side Mongo latency averaged 3–12 ms across the peak hold** — DB itself remains healthy. The 12 ms readings at 17:49 and 17:52 coincide with HPA scale-up activity (more pods opening Mongo connections at once).
 5. **Connection-pool sizing fix (PR #42) continues to hold.** With `MaxPoolSize=100 × 64 pods = 6400` connections, the new M60 ceiling is comfortably above the demand. No app-tier queueing visible in the latency curve.
 6. **Errors stayed at 0.01%** — the same residual rate as Gold/Platinum, attributable to k6's `golden_traffic` mid-flight 4xx negative checks (intentional). Substantive 5xx rate was 0%.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max (hit) | 64 |
+| CPU reserved at peak | 64 × cpu=200m | 12800m |
+| Memory reserved at peak | 64 × memory=512Mi | 32768 Mi (32 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 12800m / 2000m = 640.0% **← binding**
+- Memory: 32768 Mi / 8192 Mi = 400.0%
+- Pro-rate share = 6.40 (app spans ~6.4 D2s_v6 nodes)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M60 Compute | N/A — estimated | N/A — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M60 compute (estimated) | ~$1.60/hr × 730 | ~1168.00 | ~876.00 |
+| DocDB storage 32 GiB (included in M60) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~1168.00 | ~876.00 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 6.40 | 751.81 | 563.86 |
+| App subtotal | | 751.81 | 563.86 |
+| **Platinum+ (M60) REST + DocDB total** | | **~$1919.81** | **~$1439.86** |
+
+Savings: ~$479.95/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- CPU binds (640%) over Memory (400%); pro-rate = 6.40 — app spans ~6.4 D2s_v6 nodes. HPA hit 64/64 max, making app tier the throughput cap.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- **Cosmos DB for MongoDB vCore M60 is NOT listed in the Azure Retail Prices API (`prices.azure.com`) for brazilsouth as of 2026-05-07. The ~$1.60/hr figure is an estimate; verify at https://azure.microsoft.com/pricing/details/cosmos-db/mongodb/ before use in billing models.**
+- M60 HA (zone-redundant standby) included; estimate reflects HA-enabled cluster price.
+- App cost ($752) nearly equals DB cost ($1168) at this tier; in practice the DB is over-provisioned relative to what the app can drive at 10k RPS.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.
