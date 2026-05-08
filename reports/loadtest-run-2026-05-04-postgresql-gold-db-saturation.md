@@ -162,3 +162,56 @@ To push past ~2 616 RPS the binding factor must be moved:
 - **Scale up to a higher-vCPU SKU.** `Standard_D8ds_v5` (Platinum) doubles the vCPU budget; the Platinum run achieved ~5 330 RPS at 65 % CPU on the same 6 000-IOPS / 500-MB/s storage — i.e. ~2× the RPS at the same saturation level, exactly what 2× the vCPU buys.
 - **The storage tier already has massive headroom** — bumping IOPS, throughput, or storage size would not move the needle here. Stay on Premium SSD v2; spend any upgrade budget on compute.
 - **App tier is at the HPA ceiling (16 replicas)** but per-pod CPU is well under the 1 000 m limit. If a future test pushes app-tier CPU to its limit, raising `maxReplicas` is cheap; today the app is **not** the bottleneck.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 16 |
+| CPU reserved at peak | 16 × cpu=80m | 1280m |
+| Memory reserved at peak | 16 × memory=384Mi | 6144 Mi (6 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 1280m / 2000m = 64.0%
+- Memory: 6144 Mi / 8192 Mi = 75.0% **← binding**
+- Pro-rate share = 0.75
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex `D4ds_v5` GP Dadsv5 Series Compute (4 vCore) | 0.4800 | 0.36000 | 1 Hour |
+| PG Flex PMD V2 Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex PMD V2 IOPS Provisioned | 0.0400 | 0.03000 | 1 IOPS/Month |
+| PG Flex PMD V2 Throughput Provisioned | 0.1600 | 0.12000 | 1 MBps/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D4ds_v5 compute | 0.48 × 730 | 350.40 | 262.80 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG storage 6000 IOPS | 0.04 × 6000 | 240.00 | 180.00 |
+| PG storage 500 MBps throughput | 0.16 × 500 | 80.00 | 60.00 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 698.37 | 523.78 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.75 | 88.15 | 66.11 |
+| App subtotal | | 88.15 | 66.11 |
+| **Gold REST + PG total** | | **$786.52** | **$589.89** |
+
+Savings: $196.63/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (75.0%) over CPU (64.0%); pro-rate uses binding dimension.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- PG Flex GP Dadsv5 Series priced per vCore/hour; D4ds_v5 = 4 vCore × $0.12/vCore/hr = $0.48/hr (brazilsouth retail).
+- Premium SSD v2 storage is metered separately for capacity ($0.2185/GiB/mo), provisioned IOPS ($0.04/IOPS/mo), and provisioned throughput ($0.16/MBps/mo). This is the dominant cost driver at Gold tier.
+- ZoneRedundant HA doubles the compute cost in production; this run used a single primary — compute above is primary only.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

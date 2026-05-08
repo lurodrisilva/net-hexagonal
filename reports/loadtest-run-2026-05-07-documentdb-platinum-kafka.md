@@ -175,3 +175,47 @@ The DocDB peak at 8.9 % CPU proves the platinum DocDB SKU is **massively over-pr
 ## Artifacts
 
 `.omc/research/kafka-loadtest/platinum-mongo-1778122178/`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 8 consumer pods | 8 |
+| CPU reserved at peak | 8 × cpu=1000m | 8000m |
+| Memory reserved at peak | 8 × memory=1Gi | 8192 Mi (8 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 8000m / 2000m = 400.0%
+- Memory: 8192 Mi / 8192 Mi = 100.0%
+- **CPU binds** at 400.0%; pro-rate share = 4.0 (workload spans multiple D2s_v6 nodes — share = node multiplier)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M50 Compute | 0.80 — estimated | 0.60 — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M50 compute (estimated) | ~$0.80/h × 730 | ~584.00 | ~438.00 |
+| DocDB storage 32 GiB (included in M50) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~584.00 | ~438.00 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 4.0 | 470.12 | 352.59 |
+| App subtotal | | 470.12 | 352.59 |
+| **Platinum Kafka v1 + DocDB total** | | **~$1,054.12** | **~$790.59** |
+
+Savings: ~$263.53/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (not HPA-bounded).
+- CPU binds (400.0%); pro-rate uses binding dimension.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share = node multiplier.
+- DocDB M50 unit price estimated — Cosmos DB for MongoDB vCore tiers are not a single per-tier line in the public Retail Prices API; values consistent with public Cosmos DB MongoDB vCore pricing tables.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (separate budget line).
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

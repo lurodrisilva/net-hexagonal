@@ -67,3 +67,49 @@ bash tests/loadtest/k6/loadtest-documentdb.sh run silver
 Artifacts:
 - `tests/loadtest/k6/values-documentdb-silver.yaml` — helm overlay (6 replicas, HPA 6/12, mongo persistence)
 - `tests/loadtest/k6/rest-api-loadtest-documentdb.js` (TIER=silver → 250-RPS-peak ramp)
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 12 |
+| CPU reserved at peak | 12 × cpu=80m | 960m |
+| Memory reserved at peak | 12 × memory=384Mi | 4608 Mi (4.5 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 960m / 2000m = 48.0%
+- Memory: 4608 Mi / 8192 Mi = 56.25% **← binding**
+- Pro-rate share = 0.5625
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M20 Compute | N/A — estimated | N/A — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M20 compute (estimated) | ~$0.10/hr × 730 | ~73.00 | ~54.75 |
+| DocDB storage 32 GiB (included in M20) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~73.00 | ~54.75 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.5625 | 66.20 | 49.65 |
+| App subtotal | | 66.20 | 49.65 |
+| **Silver REST + DocDB total** | | **~$139.20** | **~$104.40** |
+
+Savings: ~$34.80/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (56.25%) over CPU (48.0%); pro-rate uses binding dimension.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- **Cosmos DB for MongoDB vCore M20 is NOT listed in the Azure Retail Prices API (`prices.azure.com`) for brazilsouth as of 2026-05-07. The ~$0.10/hr figure is an estimate; verify at https://azure.microsoft.com/pricing/details/cosmos-db/mongodb/ before use in billing models.**
+- HA not supported on M20 by platform constraint; single-node pricing applies.
+- M20 storage (32 GiB) is included in the compute tier price; no separate storage meter visible in the API.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

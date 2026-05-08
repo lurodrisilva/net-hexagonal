@@ -184,3 +184,50 @@ The k6-reported p95s (e.g. `create` median = 138 ms across runners) describe **o
 ### Implications for higher RPS on Bronze
 
 Bronze cannot meaningfully exceed ~138 RPS until either (a) provisioned IOPS is raised above 120 or (b) the workload is restructured to reduce IOs per request (e.g. tighter query plans, more aggressive shared-buffer reuse, batching). Throwing more app-tier replicas or higher concurrency at the system worsens the queue depth and the `499` tail without raising throughput.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 8 |
+| CPU reserved at peak | 8 × cpu=80m | 640m |
+| Memory reserved at peak | 8 × memory=384Mi | 3072 Mi (3 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 640m / 2000m = 32.0%
+- Memory: 3072 Mi / 8192 Mi = 37.5% **← binding**
+- Pro-rate share = 0.375
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex `B1MS` Burstable BS Series Compute | 0.0350 | 0.02625 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GB/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG B1ms compute | 0.035 × 730 | 25.55 | 19.16 |
+| PG storage 32 GiB | 0.2185 × 32 | 6.99 | 5.24 |
+| PG backup ≤ 32 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 32.54 | 24.40 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.375 | 44.07 | 33.06 |
+| App subtotal | | 44.07 | 33.06 |
+| **Bronze REST + PG total** | | **$76.61** | **$57.46** |
+
+Savings: $19.15/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (37.5%) over CPU (32.0%); pro-rate uses binding dimension.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- B1ms is Burstable (credit-capped); sustained > 20% baseline depletes credits and throttles compute.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

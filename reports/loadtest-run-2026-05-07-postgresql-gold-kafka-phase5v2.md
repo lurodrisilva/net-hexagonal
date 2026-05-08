@@ -101,3 +101,56 @@ Per-pod Container Insights `Perf` data **not captured this batch** — driver di
 ## Artifacts
 
 `.omc/research/kafka-loadtest/gold-pg-1778184385/`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 4 consumer pods | 4 |
+| CPU reserved at peak | 4 × cpu=1000m | 4000m |
+| Memory reserved at peak | 4 × memory=1Gi | 4096 Mi (4 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 4000m / 2000m = 200.0%
+- Memory: 4096 Mi / 8192 Mi = 50.0%
+- **CPU binds** at 200.0%; pro-rate share = 2.0
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex GP Dadsv5 4 vCore (`Standard_D4ds_v5`) | 0.4800 | 0.36000 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex Storage IOPS | 0.0400 | 0.03000 | 1 IOPS/Month |
+| PG Flex Storage Throughput | 0.1600 | 0.12000 | 1 MBps/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D4ds_v5 compute | 0.4800 × 730 | 350.40 | 262.80 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG storage 6000 IOPS | 0.04 × 6000 | 240.00 | 180.00 |
+| PG storage 500 MBps throughput | 0.16 × 500 | 80.00 | 60.00 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 698.37 | 523.78 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 2.0 | 235.06 | 176.30 |
+| App subtotal | | 235.06 | 176.30 |
+| **Gold Kafka v2 + PG total** | | **$933.43** | **$700.08** |
+
+Savings: $233.35/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (consumer Deployment, not HPA-bounded).
+- CPU binds (200.0%); pro-rate share = 2.0 — workload spans 2× D2s_v6 nodes.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share treated as multiplier.
+- v2 requests bumped vs v1 (1000m/1Gi vs 500m/512Mi) to support bulk-write coalescing path (PR #66 + PR #68).
+- Premium SSD v2 storage: 128 GiB + 6000 IOPS + 500 MBps as provisioned for Gold tier.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (Strimzi MSK or self-hosted — separate budget line).
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

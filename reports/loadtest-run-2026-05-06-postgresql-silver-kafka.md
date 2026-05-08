@@ -161,3 +161,50 @@ The driver's observability captures were partially lost to a transient local DNS
 - `ai-final.json`, `ai-diag-*.json`, `ai-p95.log` — App Insights queries (all DNS-failed)
 - `parsed-results.md` — derived/parsed view of the salvaged data
 - `helm.log`, `rollout.log`, `testrun.yaml`, `cleanup.log`, `run.log`, `poll.log`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 2 consumer pods | 2 |
+| CPU reserved at peak | 2 × cpu=250m | 500m |
+| Memory reserved at peak | 2 × memory=256Mi | 512 Mi (0.5 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 500m / 2000m = 25.0%
+- Memory: 512 Mi / 8192 Mi = 6.3%
+- **CPU binds** at 25.0%; pro-rate share = 0.25
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex GP Dadsv5 2 vCore (`Standard_D2ds_v5`) | 0.2400 | 0.18000 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D2ds_v5 compute | 0.2400 × 730 | 175.20 | 131.40 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 203.17 | 152.38 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.25 | 29.38 | 22.04 |
+| App subtotal | | 29.38 | 22.04 |
+| **Silver Kafka v1 + PG total** | | **$232.55** | **$174.42** |
+
+Savings: $58.13/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (consumer Deployment, not HPA-bounded).
+- CPU binds (25.0%); pro-rate uses binding dimension.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share treated as multiplier.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (Strimzi MSK or self-hosted — separate budget line).
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

@@ -322,3 +322,56 @@ Run 2 was the diagnostic step that exposed WireMock as the choke point at 1 repl
 - **Scale up the PG SKU** (e.g. `Standard_D16ds_v5`, 16 vCPU). Same offered load would sit at ~32 % CPU and queries return to ~10 ms p95 — at the cost of $/hour.
 - **Halve `update`'s round-trips.** The two-op SELECT + UPDATE pattern is the worst offender; an index-tuned single-statement update would mechanically halve its p95.
 - **Pre-warm the connection pool** to drive `CONNECT` events to zero during the test, smoothing the long tail (p99). The current Npgsql pool grows lazily as new HPA replicas appear.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 16 |
+| CPU reserved at peak | 16 × cpu=160m | 2560m |
+| Memory reserved at peak | 16 × memory=512Mi | 8192 Mi (8 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 2560m / 2000m = 128.0% **← binding**
+- Memory: 8192 Mi / 8192 Mi = 100.0%
+- Pro-rate share = 1.28 (app spans ~1.28 D2s_v6 nodes)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex `D8ds_v5` GP Dadsv5 Series Compute (8 vCore) | 0.9600 | 0.72000 | 1 Hour |
+| PG Flex PMD V2 Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex PMD V2 IOPS Provisioned | 0.0400 | 0.03000 | 1 IOPS/Month |
+| PG Flex PMD V2 Throughput Provisioned | 0.1600 | 0.12000 | 1 MBps/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D8ds_v5 compute | 0.96 × 730 | 700.80 | 525.60 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG storage 6000 IOPS | 0.04 × 6000 | 240.00 | 180.00 |
+| PG storage 500 MBps throughput | 0.16 × 500 | 80.00 | 60.00 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 1048.77 | 786.58 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 1.28 | 150.50 | 112.87 |
+| App subtotal | | 150.50 | 112.87 |
+| **Platinum REST + PG total** | | **$1199.27** | **$899.45** |
+
+Savings: $299.82/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- CPU binds (128.0%) over Memory (100.0%); pro-rate = 1.28 — app footprint spans ~1.28 D2s_v6 nodes.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- PG Flex GP Dadsv5 Series priced per vCore/hour; D8ds_v5 = 8 vCore × $0.12/vCore/hr = $0.96/hr (brazilsouth retail).
+- Premium SSD v2 storage metered separately: capacity + provisioned IOPS + provisioned throughput. Storage dominates cost at this tier.
+- ZoneRedundant HA doubles the compute cost in production; this run used a single primary — compute above is primary only.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

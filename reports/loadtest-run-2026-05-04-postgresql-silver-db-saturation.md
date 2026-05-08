@@ -163,3 +163,52 @@ To push past ~473 RPS you would need to raise the IOPS budget directly:
 - Or — same SKU — bump the storage allocation on Standard SSD; provisioned IOPS scales with disk size on that tier.
 
 Bumping the App tier (more replicas, higher CPU limits) will not help: at this point the app sits at ~38 % HPA-CPU and never even crossed the 70 % HPA target during the peak. The system is purely DB-IOPS-bound.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 12 |
+| CPU reserved at peak | 12 × cpu=80m | 960m |
+| Memory reserved at peak | 12 × memory=384Mi | 4608 Mi (4.5 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 960m / 2000m = 48.0%
+- Memory: 4608 Mi / 8192 Mi = 56.25% **← binding**
+- Pro-rate share = 0.5625
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex `D2ds_v5` GP Dadsv5 Series Compute (2 vCore) | 0.2400 | 0.18000 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GB/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D2ds_v5 compute | 0.24 × 730 | 175.20 | 131.40 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 203.17 | 152.38 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.5625 | 66.20 | 49.65 |
+| App subtotal | | 66.20 | 49.65 |
+| **Silver REST + PG total** | | **$269.37** | **$202.03** |
+
+Savings: $67.34/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (56.25%) over CPU (48.0%); pro-rate uses binding dimension.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- PG Flex GP Dadsv5 Series priced per vCore/hour; D2ds_v5 = 2 vCore × $0.12/vCore/hr = $0.24/hr (brazilsouth retail).
+- ZoneRedundant HA doubles the compute cost in production (standby replica); this run used a single primary — compute price above is for the primary only. With HA enabled double the compute line.
+- Standard SSD storage: backup ≤ provisioned size included; IOPS Scaling (500 provisioned) = $0.095/IOPS/mo = $47.50/mo retail if separately metered — not included here as Standard SSD IOPS is bundled with storage tier at this size.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

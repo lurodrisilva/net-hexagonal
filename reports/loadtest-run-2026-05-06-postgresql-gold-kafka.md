@@ -169,3 +169,55 @@ Hot vs cold partition spread is tight (LAG 78k–143k, ~1.8× ratio), so partiti
 ## Artifacts
 
 `.omc/research/kafka-loadtest/gold-pg-1778110300/`
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | Run summary: 4 consumer pods | 4 |
+| CPU reserved at peak | 4 × cpu=500m | 2000m |
+| Memory reserved at peak | 4 × memory=512Mi | 2048 Mi (2 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 2000m / 2000m = 100.0%
+- Memory: 2048 Mi / 8192 Mi = 25.0%
+- **CPU binds** at 100.0%; pro-rate share = 1.0
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| PG Flex GP Dadsv5 4 vCore (`Standard_D4ds_v5`) | 0.4800 | 0.36000 | 1 Hour |
+| PG Flex Storage Data Stored | 0.2185 | 0.16388 | 1 GiB/Month |
+| PG Flex Storage IOPS | 0.0400 | 0.03000 | 1 IOPS/Month |
+| PG Flex Storage Throughput | 0.1600 | 0.12000 | 1 MBps/Month |
+| PG Flex Backup Storage LRS Data Stored | 0.0950 | 0.07125 | 1 GB/Month |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| PG D4ds_v5 compute | 0.4800 × 730 | 350.40 | 262.80 |
+| PG storage 128 GiB | 0.2185 × 128 | 27.97 | 20.98 |
+| PG storage 6000 IOPS | 0.04 × 6000 | 240.00 | 180.00 |
+| PG storage 500 MBps throughput | 0.16 × 500 | 80.00 | 60.00 |
+| PG backup ≤ 128 GiB | included | 0.00 | 0.00 |
+| PG subtotal | | 698.37 | 523.78 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 1.0 | 117.53 | 88.15 |
+| App subtotal | | 117.53 | 88.15 |
+| **Gold Kafka v1 + PG total** | | **$815.90** | **$611.93** |
+
+Savings: $203.97/month at 25% discount.
+
+### Notes
+
+- Fixed-replica Kafka deployment (consumer Deployment, not HPA-bounded).
+- CPU binds (100.0%); pro-rate share = 1.0 (exactly one D2s_v6 node).
+- Premium SSD v2 storage: 128 GiB + 6000 IOPS + 500 MBps as provisioned for Gold tier.
+- If pro-rate share > 1.0: workload spans multiple D2s_v6 nodes — share treated as multiplier.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB, Kafka cluster (Strimzi MSK or self-hosted — separate budget line).
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

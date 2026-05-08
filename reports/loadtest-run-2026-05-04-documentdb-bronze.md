@@ -76,3 +76,49 @@ Artifacts:
 - The k6 profile peaked at 100 RPS/runner (600 aggregate target). Achieved ~29 RPS/runner = 174 aggregate — capacity-limited at the app or DB tier well below the offered load. The DB Memory ceiling at 68.9% says this is the realistic peak for an M10 + the existing app footprint at 4 replicas.
 - HPA scaled the app from 4 → up to 8 pods during the peak window (CPU > 70% on 80m requests). The DB-side peak coincides with the app-side peak.
 - Storage usage barely moved (13.8%) — the workload is read/write-mix CRUD on small docs, not bulk-load.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 8 |
+| CPU reserved at peak | 8 × cpu=80m | 640m |
+| Memory reserved at peak | 8 × memory=384Mi | 3072 Mi (3 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 640m / 2000m = 32.0%
+- Memory: 3072 Mi / 8192 Mi = 37.5% **← binding**
+- Pro-rate share = 0.375
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M10 Compute | N/A — estimated | N/A — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M10 compute (estimated) | ~$0.05/hr × 730 | ~36.50 | ~27.38 |
+| DocDB storage 32 GiB (included in M10) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~36.50 | ~27.38 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 0.375 | 44.07 | 33.06 |
+| App subtotal | | 44.07 | 33.06 |
+| **Bronze REST + DocDB total** | | **~$80.57** | **~$60.44** |
+
+Savings: ~$20.13/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (37.5%) over CPU (32.0%); pro-rate uses binding dimension.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- **Cosmos DB for MongoDB vCore M10 is NOT listed in the Azure Retail Prices API (`prices.azure.com`) for brazilsouth as of 2026-05-07. The ~$0.05/hr figure is an estimate based on Azure public pricing documentation and should be verified at https://azure.microsoft.com/pricing/details/cosmos-db/mongodb/ before use in billing models.**
+- M10 is a burstable tier (0.5 vCPU); sustained write-heavy workloads may trigger throttling similar to PG B1ms.
+- M10 storage (32 GiB) is included in the compute price; no separate storage meter in the API.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.

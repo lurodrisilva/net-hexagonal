@@ -74,3 +74,49 @@ Artifacts:
 2. **Memory headroom is large** (62.4% peak vs M40's 16 GiB). Workload remains CPU-bound on M40, never memory-bound.
 3. **IOPS at 665 ops/s is far below M40's ~10000 IOPS ceiling** (~15× headroom on Premium SSD v2). DB is CPU-bound, not IO-bound.
 4. **Same connection-pool concern as Gold** — `MaxConnectionPoolSize=200` × 8+ HPA-scaled pods overcommits M40's connection limit. Lowering pool size to ~100 per pod would smooth p95 without hurting RPS.
+
+## Monthly cost (Azure Retail Prices, Brazil South, USD)
+
+### Peak app consumption
+
+| Dimension | Calculation | Peak |
+|---|---|---:|
+| Replicas at peak | HPA max | 24 |
+| CPU reserved at peak | 24 × cpu=80m | 1920m |
+| Memory reserved at peak | 24 × memory=384Mi | 9216 Mi (9 GiB) |
+
+Node = `Standard_D2s_v6` = 2 vCPU + 8 GiB.
+- CPU: 1920m / 2000m = 96.0%
+- Memory: 9216 Mi / 8192 Mi = 112.5% **← binding**
+- Pro-rate share = 1.125 (app spans ~1.125 D2s_v6 nodes)
+
+### Unit prices (USD, retail, primary meter, brazilsouth)
+
+| Meter | Retail | Discounted (-25%) | UoM |
+|---|---:|---:|---|
+| Cosmos DB for MongoDB vCore M40 Compute | N/A — estimated | N/A — estimated | 1 Hour |
+| `Standard_D2s_v6` Linux | 0.1610 | 0.12075 | 1 Hour |
+
+### Monthly cost
+
+| Line | Calculation | Retail USD/mo | Discounted USD/mo |
+|---|---|---:|---:|
+| DocDB M40 compute (estimated) | ~$0.40/hr × 730 | ~292.00 | ~219.00 |
+| DocDB storage 32 GiB (included in M40) | included | 0.00 | 0.00 |
+| DocDB subtotal | | ~292.00 | ~219.00 |
+| App pro-rated D2s_v6 | 0.161 × 730 × 1.125 | 132.22 | 99.17 |
+| App subtotal | | 132.22 | 99.17 |
+| **Gold (M40) REST + DocDB total** | | **~$424.22** | **~$318.17** |
+
+Savings: ~$106.05/month at 25% discount.
+
+### Notes
+
+- HPA-bounded reservation as proxy (no per-pod CPU/memory snapshot in this run report).
+- Memory binds (112.5%) over CPU (96.0%); pro-rate = 1.125 — app spans ~1.125 D2s_v6 nodes.
+- Excludes: AKS control plane Standard ($73/mo), private endpoint (~$7.30/mo), egress, Public IP/LB.
+- Reference price USD; Microsoft bills in USD; not invoice reconciliation.
+- **Cosmos DB for MongoDB vCore M40 is NOT listed in the Azure Retail Prices API (`prices.azure.com`) for brazilsouth as of 2026-05-07. The ~$0.40/hr figure is an estimate; verify at https://azure.microsoft.com/pricing/details/cosmos-db/mongodb/ before use in billing models.**
+- M40 HA (zone-redundant standby) is included in M40 pricing; estimate above reflects HA-enabled cluster price.
+- M40 is the canonical Gold tier (renamed from original M30 designation). See summary for cross-tier comparison.
+- 25% uniform discount; real Azure agreements (EA/MCA/CSP) discount per-meter.
