@@ -21,11 +21,11 @@ dependencies:
     repository: "file://../helm/hex-scaffold"
 
   # The SQL building block (CloudNativePG). Resolved from the platform OCI
-  # registry. Aliased to `sqlDatabase` so values + the enable condition read
-  # `sqlDatabase.*`. It transitively depends on plat-eng-commons-package from
+  # registry. Aliased to `sqldatabase` so values + the enable condition read
+  # `sqldatabase.*`. It transitively depends on plat-eng-commons-package from
   # the same registry (pulled by `helm dependency build`).
   - name: plat-eng-sql-database-package
-    alias: sqlDatabase
+    alias: sqldatabase
     version: "0.1.0"
     repository: "oci://ghcr.io/lurodrisilva/helm-charts"
-    condition: sqlDatabase.enabled
+    condition: sqldatabase.enabled

@@ -5,5 +5,5 @@ dependencies:
 - name: plat-eng-sql-database-package
   repository: oci://ghcr.io/lurodrisilva/helm-charts
   version: 0.1.0
-digest: sha256:6c5549436ad0742c0b7ea257f167fc95df8ef720ca3b5e70e012c245e5219615
-generated: "2026-07-13T09:34:29.414687-03:00"
+digest: sha256:fe4e6867e87fbe6b96613f981d1d860181537513a9b97d40d2846ab4dada32e3
+generated: "2026-07-13T10:41:00.190122-03:00"

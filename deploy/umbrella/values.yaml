@@ -13,7 +13,7 @@
 # --- Infra wave: Postgres from the SQL building block (CloudNativePG). --------
 # Renders at the default sync-wave (0). ArgoCD's built-in postgresql.cnpg.io
 # Cluster health check gates this wave, so the migration wave waits for Ready.
-sqlDatabase:
+sqldatabase:
   enabled: true
   team: platform
   environment: production
