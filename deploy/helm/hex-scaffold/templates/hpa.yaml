@@ -5,6 +5,14 @@ metadata:
   name: {{ include "hex-scaffold.fullname" . }}
   labels:
     {{- include "hex-scaffold.labels" . | nindent 4 }}
+  {{- if .Values.argo.enabled }}
+  annotations:
+    # Co-wave with the app Deployment. Without this the HPA defaults to sync-wave
+    # 0 while its target Deployment is at syncWave.app (a later wave), so ArgoCD
+    # applies the HPA first; it reports "deployments.apps <name> not found",
+    # wave 0 never goes healthy, and the migration + app waves never run.
+    argocd.argoproj.io/sync-wave: {{ .Values.argo.syncWave.app | quote }}
+  {{- end }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
