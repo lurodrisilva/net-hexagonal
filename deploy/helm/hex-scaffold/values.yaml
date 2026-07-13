@@ -50,6 +50,21 @@ secrets:
   # External REST API the outbound HTTP adapter targets (always registered)
   externalApiBaseUrl: "https://httpbin.org"
 
+# -- Bind Postgres to a platform building block (CloudNativePG Cluster) instead
+#    of the literal secrets.postgresConnectionString above. When enabled, the
+#    app + migration Job read PGUSER/PGPASSWORD from the building block's
+#    <name>-secret via secretKeyRef and compose the connection string with
+#    Kubernetes $(VAR) expansion — no plaintext credential is templated. The
+#    host/database are the building block's deterministic outputs (<name>-rw,
+#    <name>-db). Leave disabled for the standalone/demo path.
+postgres:
+  bindBuildingBlock:
+    enabled: false
+    secretName: ""     # the building block's <name>-secret (keys: username, password)
+    host: ""           # <name>-rw
+    database: ""       # <name>-db
+    port: 5432
+
 kafka:
   # Inbound topic consumed by AccountEventConsumer (features.inbound=kafka).
   # Override per-environment via Helm --set or a values overlay so load-test

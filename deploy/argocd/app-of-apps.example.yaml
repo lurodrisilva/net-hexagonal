@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# app-of-apps.example.yaml — golden-path "app + infra together" wiring
+#
+# ILLUSTRATIVE EXAMPLE, not a ready-to-apply manifest. Replace the <...>
+# placeholders (chart coordinates, namespace, team/env, ArgoCD project) with
+# your platform's real values before use.
+#
+# Deploys hex-scaffold TOGETHER WITH its Postgres from the SQL building block,
+# in two ArgoCD sync waves so wave 2 gates on wave 1's HEALTH (not just apply
+# order):
+#
+#   wave 1  → SQL building block  → CloudNativePG Cluster <app>
+#             (emits svc <app>-rw:5432, db <app>-db, secret <app>-secret)
+#   wave 2  → hex-scaffold        → migration Job (pre-install hook) + Deployment
+#             bound to the building block via postgres.bindBuildingBlock
+#
+# PREREQUISITE: ArgoCD must have a health assessment for the CNPG `Cluster` CR
+# so wave 2 waits for Postgres to be Ready. Without it, wave 2's migration Job
+# races the database (mitigated but not eliminated by the Job's backoffLimit).
+# ---------------------------------------------------------------------------
+---
+# Wave 1 — Postgres from the SQL building block (CloudNativePG).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acct-sql
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: <argocd-project>
+  source:
+    # The SQL building block chart (served via the platform OCI registry).
+    repoURL: <oci-registry>/plat-eng-building-block-sql-database
+    targetRevision: <chart-version>
+    chart: plat-eng-building-block-sql-database
+    helm:
+      valuesObject:
+        team: <team>
+        environment: <env>
+        databases:
+          sql:
+            - name: acct            # → Cluster acct, Secret acct-secret, db acct-db, svc acct-rw
+              user: acct_user
+              # v1 demo value. Fast-follow: source from the external-secrets
+              # addon instead of a literal (see spec "Next slices").
+              password: <demo-or-external-secret>
+              instances: 1
+              storage:
+                size: 5Gi
+              # migration omitted — hex-scaffold runs its own EF migrations.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: <ns>
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Wave 2 — hex-scaffold, bound to the wave-1 Cluster (no plaintext credential).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acct-app
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: <argocd-project>
+  source:
+    repoURL: https://github.com/lurodrisilva/net-hexagonal
+    targetRevision: <git-ref>
+    path: deploy/helm/hex-scaffold
+    helm:
+      valuesObject:
+        features:
+          inbound: rest
+          outbound: rest
+          persistence: postgres
+          redis: false            # cache building block is Azure-managed (G-T3) — Day-2
+        postgres:
+          bindBuildingBlock:
+            enabled: true
+            secretName: acct-secret   # the SQL building block's <app>-secret
+            host: acct-rw             # the CNPG read-write service
+            database: acct-db
+            port: 5432
+        migrations:
+          enabled: true           # pre-install hook runs against the CNPG cluster
+        wiremock:
+          enabled: false          # not needed for the create+deploy proof
+        secrets:
+          appInsightsConnectionString: ""   # disable Azure Monitor export for the MVP proof
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: <ns>
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

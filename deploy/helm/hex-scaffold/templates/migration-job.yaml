@@ -48,4 +48,10 @@ spec:
                 name: {{ include "hex-scaffold.fullname" . }}
             - secretRef:
                 name: {{ include "hex-scaffold.fullname" . }}
+          {{- if .Values.postgres.bindBuildingBlock.enabled }}
+          # Explicit env overrides envFrom on key collision, so the composed
+          # ConnectionStrings__PostgreSql here wins over the (now-skipped) Secret.
+          env:
+            {{- include "hex-scaffold.pgBindEnv" . | nindent 12 }}
+          {{- end }}
 {{- end }}

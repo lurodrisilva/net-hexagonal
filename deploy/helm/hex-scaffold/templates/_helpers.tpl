@@ -72,3 +72,27 @@ external endpoint. Otherwise the value falls back to secrets.externalApiBaseUrl.
 {{- fail "features.redis=true requires features.persistence='postgres' (Redis cache is only paired with PostgreSQL)." -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Postgres binding to a platform building block (CloudNativePG).
+When postgres.bindBuildingBlock.enabled, the app is wired to the SQL building
+block's Cluster instead of a literal connection string. Credentials flow ONLY
+via secretKeyRef off the building block's <name>-secret; the connection string
+composes them with Kubernetes $(VAR) expansion — PGUSER/PGPASSWORD are declared
+BEFORE the connection string so the kubelet can expand $(...) at container
+start. No plaintext credential is ever templated into a manifest.
+*/}}
+{{- define "hex-scaffold.pgBindEnv" -}}
+- name: PGUSER
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgres.bindBuildingBlock.secretName | quote }}
+      key: username
+- name: PGPASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgres.bindBuildingBlock.secretName | quote }}
+      key: password
+- name: ConnectionStrings__PostgreSql
+  value: "Host={{ .Values.postgres.bindBuildingBlock.host }};Port={{ .Values.postgres.bindBuildingBlock.port }};Database={{ .Values.postgres.bindBuildingBlock.database }};Username=$(PGUSER);Password=$(PGPASSWORD);Maximum Pool Size=100"
+{{- end -}}
