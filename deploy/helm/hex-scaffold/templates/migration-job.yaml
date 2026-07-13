@@ -9,9 +9,19 @@ metadata:
   labels:
     {{- include "hex-scaffold.labels" . | nindent 4 }}
   annotations:
+    {{- if .Values.argo.enabled }}
+    # Umbrella / app-of-apps under ArgoCD: run as a Sync hook at a sync-wave
+    # AFTER the infra wave, so the CNPG Cluster is Ready (ArgoCD's built-in
+    # CloudNativePG health check gates the wave) before migrations run. A pure
+    # Helm pre-install hook would map to ArgoCD PreSync and race the Cluster.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: {{ .Values.argo.syncWave.migration | quote }}
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    {{- else }}
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- end }}
 spec:
   backoffLimit: {{ .Values.migrations.backoffLimit }}
   activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}

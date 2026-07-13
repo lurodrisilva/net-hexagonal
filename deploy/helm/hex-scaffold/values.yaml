@@ -34,6 +34,19 @@ features:
 # -- Container-level env overrides (merged after ConfigMap/Secret refs).
 env: []
 
+# -- ArgoCD ordering. When enabled, resources are ordered with ArgoCD sync-waves
+#    instead of Helm hooks so this chart can run as a subchart of an umbrella (or
+#    in an app-of-apps) that provisions data infra in an earlier wave. The
+#    migration Job becomes an ArgoCD Sync hook at syncWave.migration and the
+#    Deployment gets syncWave.app, so the CNPG Cluster (earlier wave, health-gated
+#    by ArgoCD's built-in CloudNativePG check) is Ready before migrations run.
+#    Leave disabled for standalone `helm install` (Helm pre-install hook ordering).
+argo:
+  enabled: false
+  syncWave:
+    migration: "1"
+    app: "2"
+
 # -- Connection strings / secrets referenced by the app. Prefer external
 #    secret management (CSI driver, ExternalSecrets, Sealed Secrets) in prod;
 #    the values here feed a Secret template suitable for local / demo use.
