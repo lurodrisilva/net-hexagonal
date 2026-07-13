@@ -66,6 +66,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- if .Values.postgres.bindBuildingBlock.enabled }}
+            {{- include "hex-scaffold.pgBindEnv" . | nindent 12 }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
