@@ -11,7 +11,7 @@ and supplies per-instance values — it does not author the chart).
 | Dependency | Source | Role |
 |------------|--------|------|
 | `hex-scaffold` | `file://../helm/hex-scaffold` (this repo) | the application |
-| `plat-eng-sql-database-package` (alias `sqlDatabase`) | `oci://ghcr.io/lurodrisilva/helm-charts` | CloudNativePG `Cluster` + Secret |
+| `plat-eng-sql-database-package` (alias `sqldatabase`) | `oci://ghcr.io/lurodrisilva/helm-charts` | CloudNativePG `Cluster` + Secret |
 
 Build the dependency tree before templating/deploying:
 
@@ -70,7 +70,7 @@ spec:
     path: deploy/umbrella
     helm:
       valuesObject:
-        sqlDatabase:
+        sqldatabase:
           databases:
             sql:
               - { name: acct, user: acct_user, password: <from-external-secret>, instances: 1, storage: { size: 5Gi } }
