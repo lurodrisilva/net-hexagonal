@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# hex-scaffold-umbrella / values.yaml
+#
+# ONE knob to keep in sync: the app/database name (example: "acct"). It names
+# the CNPG Cluster, its Secret (<name>-secret), its database (<name>-db), and
+# the read-write Service the CNPG operator creates (<name>-rw). The hex-scaffold
+# bind block below must point at those exact names.
+#
+# The orchestrator (ADR-0008) supplies these per-instance values and resolves
+# this chart by version; it does not edit the chart.
+# ---------------------------------------------------------------------------
+
+# --- Infra wave: Postgres from the SQL building block (CloudNativePG). --------
+# Renders at the default sync-wave (0). ArgoCD's built-in postgresql.cnpg.io
+# Cluster health check gates this wave, so the migration wave waits for Ready.
+sqlDatabase:
+  enabled: true
+  team: platform
+  environment: production
+  databases:
+    sql:
+      - name: acct               # Cluster acct, Secret acct-secret, db acct-db, svc acct-rw
+        user: acct_user
+        # v1 demo value. Fast-follow: source from the external-secrets addon
+        # instead of a literal (do NOT ship a real password in git).
+        password: CHANGE_ME
+        instances: 1
+        storage:
+          size: 5Gi
+        # migration omitted — hex-scaffold runs its own EF migrations.
+
+# --- App waves: hex-scaffold, bound to the building block. --------------------
+hex-scaffold:
+  # Order with ArgoCD sync-waves (migration wave 1, app wave 2) so both land
+  # after the infra wave (0). See hex-scaffold values.yaml `argo`.
+  argo:
+    enabled: true
+    syncWave:
+      migration: "1"
+      app: "2"
+
+  features:
+    inbound: rest
+    outbound: rest
+    persistence: postgres
+    redis: false               # cache building block is Azure-managed (G-T3) — Day-2
+
+  # Bind to the building block's Secret + the CNPG read-write Service. Composed
+  # via secretKeyRef + $(VAR) expansion (G-T1) — no plaintext credential renders.
+  postgres:
+    bindBuildingBlock:
+      enabled: true
+      secretName: acct-secret
+      host: acct-rw
+      database: acct-db
+      port: 5432
+
+  migrations:
+    enabled: true              # Sync hook (wave 1) runs against the CNPG cluster
+
+  wiremock:
+    enabled: false             # not needed for the create+deploy proof
+
+  secrets:
+    appInsightsConnectionString: ""   # G-T4 partial: disable Azure Monitor export

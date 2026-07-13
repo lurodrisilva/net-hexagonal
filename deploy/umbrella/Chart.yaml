@@ -1,0 +1,31 @@
+apiVersion: v2
+name: hex-scaffold-umbrella
+description: |
+  Golden-path deploy unit — deploys hex-scaffold TOGETHER WITH its data infra
+  provisioned from the platform building blocks, as ONE unit. Meant to be
+  deployed by ArgoCD as a single Application (the orchestrator resolves this
+  chart by version and creates the Application; see ADR-0008). Ordering is by
+  ArgoCD sync-wave: the SQL building block's CloudNativePG Cluster reconciles in
+  the infra wave (health-gated by ArgoCD's built-in CloudNativePG check), then
+  hex-scaffold's migration Sync hook, then the app.
+type: application
+version: 0.1.0
+appVersion: "latest"
+kubeVersion: ">=1.27.0"
+
+dependencies:
+  # The application. Local path — this umbrella ships inside the app repo
+  # (rendered from the net-hexagonal template), so the app's own CI packages it.
+  - name: hex-scaffold
+    version: "0.1.0"
+    repository: "file://../helm/hex-scaffold"
+
+  # The SQL building block (CloudNativePG). Resolved from the platform OCI
+  # registry. Aliased to `sqlDatabase` so values + the enable condition read
+  # `sqlDatabase.*`. It transitively depends on plat-eng-commons-package from
+  # the same registry (pulled by `helm dependency build`).
+  - name: plat-eng-sql-database-package
+    alias: sqlDatabase
+    version: "0.1.0"
+    repository: "oci://ghcr.io/lurodrisilva/helm-charts"
+    condition: sqlDatabase.enabled

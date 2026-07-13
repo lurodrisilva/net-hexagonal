@@ -4,6 +4,11 @@ metadata:
   name: {{ include "hex-scaffold.fullname" . }}
   labels:
     {{- include "hex-scaffold.labels" . | nindent 4 }}
+  {{- if .Values.argo.enabled }}
+  annotations:
+    # Roll out only after the migration wave (and thus the CNPG Cluster) is done.
+    argocd.argoproj.io/sync-wave: {{ .Values.argo.syncWave.app | quote }}
+  {{- end }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
