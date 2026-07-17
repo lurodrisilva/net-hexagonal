@@ -6,7 +6,7 @@ description: |
   (PostgreSQL or MongoDB, optionally paired with Redis) driven entirely by
   the ConfigMap rendered from values.yaml.
 type: application
-version: 0.1.0
+version: 0.2.0
 #appVersion: "0.1.0"
 appVersion: "latest"
 kubeVersion: ">=1.27.0"

@@ -5,11 +5,17 @@ description: |
   provisioned from the platform building blocks, as ONE unit. Meant to be
   deployed by ArgoCD as a single Application (the orchestrator resolves this
   chart by version and creates the Application; see ADR-0008). Ordering is by
-  ArgoCD sync-wave: the SQL building block's CloudNativePG Cluster reconciles in
-  the infra wave (health-gated by ArgoCD's built-in CloudNativePG check), then
+  ArgoCD sync-wave: the SQL building block reconciles in the infra wave, then
   hex-scaffold's migration Sync hook, then the app.
+
+  Defaults to azure-flexibleserver (ADR-0020), so installing this BILLS. The
+  wave gate depends on the platform.myorg.io health check registered by
+  aks-foundation, because ArgoCD cannot assess a Crossplane XR on its own.
 type: application
-version: 0.1.0
+# 0.2.0 is BREAKING: the SQL building block's default engine flipped from
+# in-cluster CloudNativePG to a billed Azure Flexible Server (ADR-0020), and the
+# app's bind moved from one literal-host Secret to two composed Secrets (G-T6).
+version: 0.2.0
 appVersion: "latest"
 kubeVersion: ">=1.27.0"
 
@@ -17,15 +23,21 @@ dependencies:
   # The application. Local path — this umbrella ships inside the app repo
   # (rendered from the net-hexagonal template), so the app's own CI packages it.
   - name: hex-scaffold
-    version: "0.1.0"
+    version: "0.2.0"
     repository: "file://../helm/hex-scaffold"
 
-  # The SQL building block (CloudNativePG). Resolved from the platform OCI
-  # registry. Aliased to `sqldatabase` so values + the enable condition read
-  # `sqldatabase.*`. It transitively depends on plat-eng-commons-package from
-  # the same registry (pulled by `helm dependency build`).
+  # The SQL building block. Resolved from the platform OCI registry. Aliased to
+  # `sqldatabase` so values + the enable condition read `sqldatabase.*`. It
+  # transitively depends on plat-eng-commons-package from the same registry.
+  #
+  # 0.2.0 is where `engine` appears; 0.1.0 was CloudNativePG-only and its values
+  # shape (top-level user/password/instances/storage) is rejected by 0.2.0.
+  #
+  # No cache building block here: it still emits a retired Azure API through a
+  # provider group this cluster does not serve, and bypasses the RedisInstance
+  # XRD. It joins once ADR-0019's re-point lands.
   - name: plat-eng-sql-database-package
     alias: sqldatabase
-    version: "0.1.0"
+    version: "0.2.0"
     repository: "oci://ghcr.io/lurodrisilva/helm-charts"
     condition: sqldatabase.enabled

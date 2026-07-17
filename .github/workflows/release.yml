@@ -1,18 +1,26 @@
 name: release
 
-# Builds a multi-arch container image and publishes it to GHCR
-# (ghcr.io/<owner>/<repo>) with SLSA build-provenance attestations.
+# Builds a multi-arch container image AND packages the umbrella deploy unit
+# (ADR-0008), publishing both to GHCR with SLSA build-provenance attestations.
 #
 # Triggers:
-#   pull_request → build + Dockerfile lint, NO push (zero-cost PR validation)
-#   push to main → build + push with `edge` + short SHA + `latest` tags
-#   tag v*.*.*   → build + push with full semver tags + `latest`
+#   pull_request → build + Dockerfile lint + chart validation, NO push
+#   push to main → build + push image (`edge`/sha/`latest`) + push umbrella
+#                  <base>-<sha> prerelease
+#   tag v*.*.*   → build + push image (semver + `latest`) + push umbrella <semver>
+#
+# Registry is GHCR, not ACR, despite ADR-0014 naming ACR: the ACR exists and the
+# kubelet has AcrPull, but nothing can authenticate to it — CI has no push
+# identity and ArgoCD has no OCI pull credential, and the registry allows
+# neither anonymous nor admin access. GHCR needs neither (push via GITHUB_TOKEN,
+# pull anonymous). See ADR-0021; ACR is gated on its private-endpoint work.
 #
 # Security posture (see .claude/skills/github-actions):
 #   * permissions: {} at workflow floor, widened per job only where needed
 #   * every third-party action SHA-pinned with tag comment
 #   * GHCR auth via short-lived GITHUB_TOKEN (no long-lived PAT)
 #   * build-provenance attestation attached to every pushed image digest
+#   * untrusted/dynamic values pass through env:, never interpolated into run:
 
 on:
   pull_request:
@@ -21,6 +29,8 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - 'src/**'
+      - 'deploy/helm/**'
+      - 'deploy/umbrella/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - 'Hex.Scaffold.slnx'
@@ -43,8 +53,94 @@ defaults:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # The platform OCI registry — where the SQL building block lives and where the
+  # umbrella is published alongside it.
+  CHART_REPO: oci://ghcr.io/lurodrisilva/helm-charts
+  UMBRELLA_DIR: deploy/umbrella
 
 jobs:
+  # Chart validation. The repo had none before Phase D: release.yml built the
+  # image and never looked at deploy/, so a chart that could not render still
+  # shipped a green build.
+  validate-charts:
+    name: lint + render charts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.3
+
+      - name: Resolve umbrella dependencies
+        run: helm dependency update "$UMBRELLA_DIR"
+
+      - name: Lint
+        run: |
+          helm lint deploy/helm/hex-scaffold
+          helm lint "$UMBRELLA_DIR"
+
+      - name: Render the umbrella (default = azure-flexibleserver)
+        run: |
+          helm template acct "$UMBRELLA_DIR" > /tmp/umbrella.yaml
+          # The default engine bills, so assert the deploy unit is what we think:
+          # one PostgresInstance XR, and no credential in the rendered output.
+          grep -q 'kind: PostgresInstance' /tmp/umbrella.yaml
+          test "$(grep -c 'kind: PostgresInstance' /tmp/umbrella.yaml)" = "1"
+          # The CNPG engine must stay inert under the default.
+          if grep -q 'kind: Cluster' /tmp/umbrella.yaml; then
+            echo "::error::umbrella rendered a CNPG Cluster under engine=azure-flexibleserver" && exit 1
+          fi
+
+      - name: Assert no plaintext credential renders
+        run: |
+          # Every credential must arrive by secretKeyRef and reach the app through
+          # $(VAR) expansion at container start. Two independent assertions:
+          #
+          #   1. the connection string never carries a literal password;
+          #   2. no manifest holds a `password: <value>` line at all.
+          #
+          # (2) is what the pre-0.2.0 umbrella would have failed — it shipped
+          # `password: CHANGE_ME` in values.yaml.
+          #
+          # shellcheck disable=SC2016
+          # The single quotes are deliberate: $(PGPASSWORD) is the literal text
+          # we require in the manifest — the kubelet expands it at container
+          # start, not this shell.
+          if ! grep -q 'Password=\$(PGPASSWORD)' /tmp/umbrella.yaml; then
+            echo "::error::connection string does not use \$(PGPASSWORD) expansion" && exit 1
+          fi
+          if grep -nE '^[[:space:]]*password:[[:space:]]*\S' /tmp/umbrella.yaml; then
+            echo "::error::a plaintext password rendered into the umbrella" && exit 1
+          fi
+          echo "no plaintext credential in the rendered umbrella"
+
+      - name: Render hex-scaffold in literal (cloudnativepg) bind mode
+        run: |
+          # G-T6 keeps the pre-0.2.0 static-host mode working. Prove it renders,
+          # so the CNPG path is not silently broken by the azure default.
+          helm template acct deploy/helm/hex-scaffold \
+            --set postgres.bindBuildingBlock.enabled=true \
+            --set postgres.bindBuildingBlock.secretName=acct-secret \
+            --set postgres.bindBuildingBlock.host=acct-rw \
+            --set postgres.bindBuildingBlock.database=acct-db > /dev/null
+
+      - name: Assert the bind fails closed when under-specified
+        run: |
+          # An enabled bind with no host must NOT render. If this stops failing,
+          # the guard is gone and a broken connection string ships silently.
+          if helm template acct deploy/helm/hex-scaffold \
+               --set postgres.bindBuildingBlock.enabled=true \
+               --set postgres.bindBuildingBlock.secretName=acct-secret \
+               --set postgres.bindBuildingBlock.database=acct-db > /dev/null 2>&1; then
+            echo "::error::bindBuildingBlock rendered without a host — the fail-closed guard is gone" && exit 1
+          fi
+          echo "bind fails closed without a host, as intended"
+
   build-and-push:
     name: build + publish to GHCR
     runs-on: ubuntu-latest
@@ -155,4 +251,163 @@ jobs:
               echo "gh attestation verify oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST} -R ${{ github.repository }}"
               echo '```'
             fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Phase D's DoD: package the umbrella and publish it BY DIGEST.
+  #
+  # The umbrella is the deploy unit the orchestrator resolves by version
+  # (ADR-0008). Pinning the image digest here is what makes that resolution
+  # reproducible: chart version X always deploys exactly one image, with no
+  # mutable tag in between. That is why this job depends on build-and-push —
+  # it needs the digest that build produced.
+  package-umbrella:
+    name: package + publish umbrella
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    # PRs validate charts (see validate-charts) but must never publish.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.3
+
+      - name: Resolve the chart version
+        id: version
+        env:
+          # github.ref_name is a tag or branch name. Never interpolated into a
+          # shell command — read from the environment and pattern-matched.
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BASE="$(yq '.version' "$UMBRELLA_DIR/Chart.yaml")"
+          if [ "$REF_TYPE" = "tag" ]; then
+            # v1.2.3 -> 1.2.3. A release is the clean SemVer.
+            CHART_VERSION="${REF_NAME#v}"
+            APP_VERSION="${REF_NAME#v}"
+          else
+            # Master builds publish a SemVer PRERELEASE off the chart's declared
+            # base: 0.2.0-sha-abc1234. Prerelease ordering keeps these below the
+            # eventual 0.2.0 release, which is what we want — `helm search` and
+            # version ranges must not prefer a master build over a tag.
+            #
+            # The `sha-` prefix is load-bearing, not decoration. A bare short SHA
+            # that happens to be all digits with a leading zero (~1 commit in
+            # 270) is an invalid SemVer numeric identifier, and helm rejects it:
+            # `0.2.0-0123456` -> "Error: version segment starts with 0". The
+            # prefix makes the identifier alphanumeric, which is always legal.
+            SHORT_SHA="$(printf '%s' "$SHA" | cut -c1-7)"
+            CHART_VERSION="${BASE}-sha-${SHORT_SHA}"
+            APP_VERSION="${SHORT_SHA}"
+          fi
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved chart version: ${CHART_VERSION} (base ${BASE})"
+
+      - name: Pin the image digest into the umbrella
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DIGEST:-}" ]; then
+            echo "::error::build-and-push produced no digest — refusing to publish an unpinned umbrella"
+            exit 1
+          fi
+          # Both the app and the migration Job run the same image; the migration
+          # bundle is baked into it. digest wins over tag in the chart helpers.
+          DIGEST="$DIGEST" yq -i '
+            .hex-scaffold.image.digest = strenv(DIGEST) |
+            .hex-scaffold.migrations.image.digest = strenv(DIGEST)
+          ' "$UMBRELLA_DIR/values.yaml"
+          echo "Pinned image digest: ${DIGEST}"
+
+      - name: Resolve umbrella dependencies
+        run: helm dependency update "$UMBRELLA_DIR"
+
+      - name: Assert the umbrella renders the pinned digest
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          helm template acct "$UMBRELLA_DIR" > /tmp/pinned.yaml
+          # Publishing a chart that does not actually reference the digest would
+          # defeat the entire point, so prove it rather than trust the patch.
+          if ! grep -q "@${DIGEST}" /tmp/pinned.yaml; then
+            echo "::error::rendered umbrella does not reference ${DIGEST}" && exit 1
+          fi
+          # ...and prove no mutable tag survived on the app image.
+          if grep -qE 'image: "?ghcr\.io/[^"@]*:latest"?' /tmp/pinned.yaml; then
+            echo "::error::umbrella still references a mutable :latest tag" && exit 1
+          fi
+          echo "umbrella renders the pinned digest and no mutable app tag"
+
+      - name: Package
+        id: package
+        env:
+          CHART_VERSION: ${{ steps.version.outputs.chart_version }}
+          APP_VERSION: ${{ steps.version.outputs.app_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          helm package "$UMBRELLA_DIR" \
+            --version "$CHART_VERSION" \
+            --app-version "$APP_VERSION" \
+            --destination dist
+          echo "path=dist/hex-scaffold-umbrella-${CHART_VERSION}.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR (Helm OCI)
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$TOKEN" | helm registry login "$REGISTRY" --username "$ACTOR" --password-stdin
+
+      - name: Push umbrella to GHCR
+        id: push_chart
+        env:
+          CHART_PATH: ${{ steps.package.outputs.path }}
+        run: |
+          set -euo pipefail
+          # `helm push` prints the pushed manifest digest on stderr.
+          helm push "$CHART_PATH" "$CHART_REPO" 2>&1 | tee /tmp/push.log
+          CHART_DIGEST="$(grep -oE 'sha256:[0-9a-f]{64}' /tmp/push.log | head -1)"
+          echo "chart_digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Umbrella digest: ${CHART_DIGEST}"
+
+      - name: Attest umbrella provenance (SLSA v1)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/lurodrisilva/helm-charts/hex-scaffold-umbrella
+          subject-digest: ${{ steps.push_chart.outputs.chart_digest }}
+          push-to-registry: true
+
+      - name: Job summary
+        if: always()
+        env:
+          CHART_VERSION: ${{ steps.version.outputs.chart_version }}
+          CHART_DIGEST:  ${{ steps.push_chart.outputs.chart_digest }}
+          IMAGE_DIGEST:  ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          {
+            echo "## Umbrella deploy unit"
+            echo ""
+            echo "- Chart: \`${CHART_REPO}/hex-scaffold-umbrella\`"
+            echo "- Version: \`${CHART_VERSION}\`"
+            echo "- Chart digest: \`${CHART_DIGEST:-<not-pushed>}\`"
+            echo "- Pinned image digest: \`${IMAGE_DIGEST:-<none>}\`"
+            echo ""
+            echo "Resolve it:"
+            echo '```bash'
+            echo "helm show chart ${CHART_REPO}/hex-scaffold-umbrella --version ${CHART_VERSION}"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
