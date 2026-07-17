@@ -365,6 +365,22 @@ jobs:
             --destination dist
           echo "path=dist/hex-scaffold-umbrella-${CHART_VERSION}.tgz" >> "$GITHUB_OUTPUT"
 
+      # Two logins, because they write to different places and two different
+      # tools read them:
+      #
+      #   helm registry login   -> ~/.config/helm/registry/config.json  (helm push)
+      #   docker/login-action   -> ~/.docker/config.json                (attest,
+      #                            which needs registry creds for push-to-registry)
+      #
+      # Doing only the helm login publishes the chart fine and then fails the
+      # attestation with "No credentials found for registry ghcr.io".
+      - name: Log in to GHCR (Docker config — for the attestation push)
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Log in to GHCR (Helm OCI)
         env:
           ACTOR: ${{ github.actor }}
