@@ -11,9 +11,18 @@ metadata:
   annotations:
     {{- if .Values.argo.enabled }}
     # Umbrella / app-of-apps under ArgoCD: run as a Sync hook at a sync-wave
-    # AFTER the infra wave, so the CNPG Cluster is Ready (ArgoCD's built-in
-    # CloudNativePG health check gates the wave) before migrations run. A pure
-    # Helm pre-install hook would map to ArgoCD PreSync and race the Cluster.
+    # AFTER the infra wave. A pure Helm pre-install hook would map to ArgoCD
+    # PreSync and race the database outright.
+    #
+    # The wave gate alone is NOT sufficient, and how it fails depends on engine:
+    #   cloudnativepg        ArgoCD's built-in postgresql.cnpg.io health check
+    #                        gates the wave properly.
+    #   azure-flexibleserver ArgoCD ships no health check for a Crossplane XR and
+    #                        defaults unassessable kinds to Healthy, so the wave
+    #                        clears instantly. aks-foundation registers a
+    #                        platform.myorg.io health check to fix this; the
+    #                        wait initContainer below (G-T7) is the backstop that
+    #                        holds even when cluster config does not.
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/sync-wave: {{ .Values.argo.syncWave.migration | quote }}
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -38,6 +47,55 @@ spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.migrations.wait.enabled .Values.postgres.bindBuildingBlock.enabled }}
+      # G-T7 — do not migrate against a host that is not answering yet. See
+      # migrations.wait in values.yaml for why the sync-wave gate is not enough.
+      initContainers:
+        - name: wait-for-db
+          image: {{ printf "%s:%s" .Values.migrations.wait.image.repository .Values.migrations.wait.image.tag }}
+          imagePullPolicy: {{ .Values.migrations.wait.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 1654
+            capabilities: { drop: [ALL] }
+          # PGHOST/PGPORT only — the wait has no business holding credentials.
+          # Under azure-flexibleserver PGHOST is a secretKeyRef into the
+          # connection secret, so this container cannot even be scheduled until
+          # Crossplane has written the FQDN.
+          env:
+            {{- include "hex-scaffold.pgBindHostEnv" . | nindent 12 }}
+            - name: WAIT_TIMEOUT
+              value: {{ .Values.migrations.wait.timeoutSeconds | quote }}
+            - name: WAIT_INTERVAL
+              value: {{ .Values.migrations.wait.intervalSeconds | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting up to ${WAIT_TIMEOUT}s for ${PGHOST}:${PGPORT}"
+              elapsed=0
+              # Resolving and connecting are separate failures: private DNS can
+              # lag the server going Ready, so report which one is stuck rather
+              # than a bare timeout.
+              while true; do
+                if nslookup "${PGHOST}" >/dev/null 2>&1; then
+                  if nc -z -w 3 "${PGHOST}" "${PGPORT}"; then
+                    echo "${PGHOST}:${PGPORT} is accepting connections after ${elapsed}s"
+                    exit 0
+                  fi
+                  state="resolves, not accepting connections"
+                else
+                  state="does not resolve yet"
+                fi
+                if [ "${elapsed}" -ge "${WAIT_TIMEOUT}" ]; then
+                  echo "gave up after ${elapsed}s: ${PGHOST} ${state}" >&2
+                  exit 1
+                fi
+                echo "  ${elapsed}s: ${PGHOST} ${state}"
+                sleep "${WAIT_INTERVAL}"
+                elapsed=$((elapsed + WAIT_INTERVAL))
+              done
       {{- end }}
       containers:
         - name: migrate
