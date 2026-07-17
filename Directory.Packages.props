@@ -16,6 +16,14 @@
     <!-- MongoDB.Driver 3.4.0 pulls in at v1.0.0 (vulnerable to GHSA-pggp-6c3x-2xmx). -->
     <!-- 1.3.1 is the latest stable; the advisory is fixed from 1.1.6 onward. -->
     <PackageVersion Include="Snappier" Version="1.3.1" />
+    <!-- Same story, same parent: MongoDB.Driver 3.4.0 pulls SharpCompress 0.30.1, -->
+    <!-- which GHSA-6c8g-7p36-r338 (MODERATE, zip-slip via directory entries in -->
+    <!-- WriteToDirectory) flags for every version <= 0.47.4. NuGet's audit DB -->
+    <!-- started reporting it and TreatWarningsAsErrors turned NU1902 into a build -->
+    <!-- failure, breaking master from 2026-07-13. 0.50.0 is the latest pre-1.0 -->
+    <!-- stable and is outside the vulnerable range; the advisory records no -->
+    <!-- firstPatchedVersion, so anything above 0.47.4 clears it. -->
+    <PackageVersion Include="SharpCompress" Version="0.50.0" />
     <!-- ActivitySource that emits MongoDB command spans for the OTel pipeline. -->
     <!-- v3.0.0 declares MongoDB.Driver compatibility range [3.0.0, 4.0.0) and -->
     <!-- net10.0 target framework — matches our Driver 3.4.0 pin. ActivitySource -->
@@ -44,6 +52,12 @@
     <!-- TreatWarningsAsErrors turns NU1903 into a build failure; 10.0.0 resolves both. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.6" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <!-- Transitive pin: Microsoft.AspNetCore.OpenApi 10.0.0 pulls Microsoft.OpenApi -->
+    <!-- 2.0.0, which GHSA-v5pm-xwqc-g5wc (HIGH, circular schema references can -->
+    <!-- terminate OpenAPI parsing) flags across >= 2.0.0-preview.11, <= 2.7.4. -->
+    <!-- 2.7.5 is the first patched release on the 2.x line — staying on 2.x rather -->
+    <!-- than jumping to 3.x keeps the ASP.NET integration on its expected major. -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
     <!-- OpenTelemetry — pinned to 1.15.3 to clear three NU1902 audit advisories -->
     <!-- that NuGet's audit DB started flagging on 2026-04-26 and were failing CI: -->
     <!--   * GHSA-g94r-2vxg-569j  (OpenTelemetry.Api 1.15.1, transitive) -->
