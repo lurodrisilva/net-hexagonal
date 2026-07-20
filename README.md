@@ -138,6 +138,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the full breakdown.
 | [`docs/loadtest.md`](docs/loadtest.md) | End-to-end load testing — k6 for REST, Strimzi + kafka-cli for Kafka |
 | [`docs/testing.md`](docs/testing.md) | Unit, integration, architecture test strategy |
 | [`docs/development.md`](docs/development.md) | Local infra (Docker), configuration, EF migrations, troubleshooting |
+| [`docs/scaffolder.md`](docs/scaffolder.md) | The ADR-0009 "scaffold a new app" workflow — how the orchestrator's `POST /api/v1/apps` renders this template into a new repo |
 
 ---
 
