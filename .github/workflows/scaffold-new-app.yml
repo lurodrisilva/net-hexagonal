@@ -67,7 +67,7 @@ jobs:
     steps:
       # 1. Check out THIS template repo (the render source).
       - name: Checkout template
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. Mint a short-lived GitHub App installation token scoped to `owner`,
       #    so it can create + push the new repo under that owner. The action
@@ -75,7 +75,7 @@ jobs:
       #    step output and NEVER echo it.
       - name: Mint GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.SCAFFOLDER_APP_ID }}
           private-key: ${{ secrets.SCAFFOLDER_APP_PRIVATE_KEY }}
