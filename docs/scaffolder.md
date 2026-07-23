@@ -18,7 +18,7 @@ with the requested app identity. Inputs:
 | Input         | Required | Default        | Purpose                                                                    |
 |---------------|----------|----------------|----------------------------------------------------------------------------|
 | `appName`     | yes      | —              | New app name (e.g. `orders`, `my-svc`). Drives the **code** identities.     |
-| `repoName`    | no       | kebab(appName) | Target repo name — the orchestrator passes `appName` + a random suffix so repeated scaffolds never collide. Kept separate from `appName` so the code identity stays clean. |
+| `repoName`    | no       | kebab(appName) | Target repo name (a **bare** slug) — the orchestrator passes `appName` + a random suffix so repeated scaffolds never collide. Kept separate from `appName` so the code identity stays clean. A fully-qualified `owner/repo` (e.g. from a manual dispatch) is tolerated: the `owner/` prefix is stripped to the basename before validation. |
 | `owner`       | no       | `lurodrisilva` | GitHub user/org that owns the new repo.                                     |
 | `domain`      | no       | `account`      | Reserved for the future domain-rename (see Limitations).                    |
 | `description` | no       | `""`           | Description for the new repository.                                         |
@@ -29,7 +29,8 @@ with the requested app identity. Inputs:
 2. Computes the **code** identities from `appName`, plus the **target repo** name:
    - **PascalCase** (`orders` → `Orders`, `my-svc` → `MySvc`) — namespaces, `.slnx`, `.csproj`.
    - **kebab-case** (`orders`, `my-svc`) — Helm/chart/k8s names (the app identity).
-   - **`TARGET_REPO`** — `repoName` if supplied, else the kebab. Validated as a GitHub slug.
+   - **`TARGET_REPO`** — `repoName` if supplied, else the kebab. A fully-qualified
+     `owner/repo` is normalized to its basename first, then validated as a GitHub slug.
 3. Creates `owner/<TARGET_REPO>` as a **private** repo (idempotent — if it already exists it just re-pushes).
 4. Runs [`scripts/scaffold-render.sh`](../scripts/scaffold-render.sh) to render this
    template into a temp dir with the **clean** identity (never the suffixed repo name).
