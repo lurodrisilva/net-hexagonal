@@ -14,9 +14,13 @@
 #   Actions secrets:
 #       SCAFFOLDER_CREATE_TOKEN  — fine-grained PAT, resource owner = the account
 #                                  that owns the new repos, with repository
-#                                  permissions Administration:write (create) and
-#                                  Contents:write (push). "All repositories"
-#                                  because the target repo does not exist yet.
+#                                  permissions Administration:write (create),
+#                                  Contents:write (push), and Workflows:write
+#                                  (the rendered template ships .github/workflows/*;
+#                                  GitHub rejects a push that creates/updates
+#                                  workflow files without it — Contents:write is
+#                                  NOT sufficient). "All repositories" because the
+#                                  target repo does not exist yet.
 #   A PAT (not a GitHub App installation token) is required because `owner` here
 #   is a USER account, and a GitHub App CANNOT create a repository in a user
 #   account — POST /user/repos only accepts a user token (ADR-0009 amendment

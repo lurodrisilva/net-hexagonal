@@ -43,9 +43,11 @@ Repo create + push use a **fine-grained Personal Access Token** in this repo's
 **Actions secrets**:
 
 - `SCAFFOLDER_CREATE_TOKEN` — fine-grained PAT, resource owner = the account that
-  owns the new repos, repository permissions **Administration: write** (create)
-  and **Contents: write** (push), scope **All repositories** (the target repo
-  does not exist yet).
+  owns the new repos, repository permissions **Administration: write** (create),
+  **Contents: write** (push), and **Workflows: write** (the rendered template ships
+  `.github/workflows/*`; GitHub rejects a push that creates/updates workflow files
+  without it — `Contents: write` alone is **not** enough), scope **All repositories**
+  (the target repo does not exist yet).
 
 **Why a PAT and not the GitHub App** (ADR-0009 amendment 2026-07-20): `owner` is a
 **user** account, and a GitHub App installation token **cannot create a repository
