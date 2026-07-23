@@ -118,6 +118,15 @@ jobs:
           fi
           target="$REPO_NAME_INPUT"
           [ -z "$target" ] && target="$kebab"
+          # Tolerate a fully-qualified "owner/repo" pasted into repoName (common on
+          # a manual `gh workflow run`): the repository NAME is a bare slug and the
+          # owner comes from the separate `owner` input, so drop any leading path
+          # and keep only the basename before validating.
+          if printf '%s' "$target" | grep -q '/'; then
+            stripped="${target##*/}"
+            echo "::notice title=repoName normalized::stripped owner prefix '$target' -> '$stripped'"
+            target="$stripped"
+          fi
           if ! printf '%s' "$target" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; then
             echo "error: repoName '$target' is not a valid GitHub slug (lowercase alnum + hyphen, 1-39)" >&2
             exit 1
