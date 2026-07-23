@@ -10,13 +10,19 @@
 #   creation + push all happen here on GitHub Actions, not in orchestrator code.
 #
 # HOW IT AUTHENTICATES
-#   It mints a short-lived installation token from a GitHub App. The App's
-#   credentials live in this repo's Actions secrets:
-#       SCAFFOLDER_APP_ID           — the GitHub App's numeric app id
-#       SCAFFOLDER_APP_PRIVATE_KEY  — the App's PEM private key
-#   This is the SAME GitHub App the orchestrator uses to dispatch this workflow
-#   (see the harness "Phase F" proof doc + docs/scaffolder.md). The App must be
-#   installed on `owner` with permission to create repositories and push code.
+#   Repo create + push use a fine-grained Personal Access Token in this repo's
+#   Actions secrets:
+#       SCAFFOLDER_CREATE_TOKEN  — fine-grained PAT, resource owner = the account
+#                                  that owns the new repos, with repository
+#                                  permissions Administration:write (create) and
+#                                  Contents:write (push). "All repositories"
+#                                  because the target repo does not exist yet.
+#   A PAT (not a GitHub App installation token) is required because `owner` here
+#   is a USER account, and a GitHub App CANNOT create a repository in a user
+#   account — POST /user/repos only accepts a user token (ADR-0009 amendment
+#   2026-07-20). The GitHub App the orchestrator holds is used ONLY by the
+#   orchestrator to dispatch this workflow and read repo existence; it is not
+#   used inside this run.
 #
 # WHAT IT DOES NOT DO
 #   The render is heuristic (sed-based; see scripts/scaffold-render.sh). It does
@@ -31,8 +37,13 @@ on:
   workflow_dispatch:
     inputs:
       appName:
-        description: "New application name (e.g. orders, my-svc). Drives PascalCase + kebab identity."
+        description: "New application name (e.g. orders, my-svc). Drives PascalCase + kebab CODE identity."
         required: true
+        type: string
+      repoName:
+        description: "Target repository name (usually appName + a collision-avoidance suffix). Defaults to the kebab of appName when empty."
+        required: false
+        default: ""
         type: string
       owner:
         description: "GitHub owner (user/org) that will own the new repo."
@@ -51,7 +62,7 @@ on:
         type: string
 
 # Minimal token for this workflow: it only needs to read this template to render
-# it. All writes to the TARGET repo go through the minted GitHub App token.
+# it. All writes to the TARGET repo go through SCAFFOLDER_CREATE_TOKEN (the PAT).
 permissions:
   contents: read
 
@@ -69,29 +80,22 @@ jobs:
       - name: Checkout template
         uses: actions/checkout@v4
 
-      # 2. Mint a short-lived GitHub App installation token scoped to `owner`,
-      #    so it can create + push the new repo under that owner. The action
-      #    auto-masks the token in logs; downstream steps read it from the
-      #    step output and NEVER echo it.
-      - name: Mint GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.SCAFFOLDER_APP_ID }}
-          private-key: ${{ secrets.SCAFFOLDER_APP_PRIVATE_KEY }}
-          owner: ${{ inputs.owner }}
-
-      # 3. Compute the two identities from appName:
+      # 2. Compute the CODE identities from appName, and the TARGET REPO name:
       #      APP_PASCAL — split on - _ space, capitalize each part (orders->Orders,
       #                   my-svc->MySvc). Used for namespaces / sln / csproj.
       #      APP_KEBAB  — lowercased appName with _ and spaces normalized to '-'.
-      #                   Used for helm/chart/k8s names AND the target repo name.
-      #    appName is read from an env var (not interpolated into the script body)
-      #    to avoid shell-injection from the dispatch input.
+      #                   Used for helm/chart/k8s names (the app identity).
+      #      TARGET_REPO — the repository to create/push. Defaults to APP_KEBAB;
+      #                   the orchestrator passes appName + a random suffix so
+      #                   repeated scaffolds never collide, WITHOUT polluting the
+      #                   code identity. Validated as a GitHub-safe slug.
+      #    All inputs are read from env vars (not interpolated into the script
+      #    body) to avoid shell-injection from the dispatch inputs.
       - name: Compute identities
         id: ids
         env:
           APP_NAME_INPUT: ${{ inputs.appName }}
+          REPO_NAME_INPUT: ${{ inputs.repoName }}
           DOMAIN_INPUT: ${{ inputs.domain }}
         run: |
           set -euo pipefail
@@ -108,42 +112,54 @@ jobs:
             echo "error: appName '$raw' produced an empty identity" >&2
             exit 1
           fi
+          target="$REPO_NAME_INPUT"
+          [ -z "$target" ] && target="$kebab"
+          if ! printf '%s' "$target" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; then
+            echo "error: repoName '$target' is not a valid GitHub slug (lowercase alnum + hyphen, 1-39)" >&2
+            exit 1
+          fi
           {
             echo "APP_PASCAL=$pascal"
             echo "APP_KEBAB=$kebab"
+            echo "TARGET_REPO=$target"
           } >> "$GITHUB_ENV"
-          echo "pascal=$pascal" >> "$GITHUB_OUTPUT"
-          echo "kebab=$kebab"   >> "$GITHUB_OUTPUT"
-          echo "Computed APP_PASCAL=$pascal  APP_KEBAB=$kebab  (domain input='$DOMAIN_INPUT' reserved, not applied)"
+          {
+            echo "pascal=$pascal"
+            echo "kebab=$kebab"
+            echo "target=$target"
+          } >> "$GITHUB_OUTPUT"
+          echo "Computed APP_PASCAL=$pascal  APP_KEBAB=$kebab  TARGET_REPO=$target  (domain input='$DOMAIN_INPUT' reserved, not applied)"
 
-      # 4. Create the target repo. Idempotent: if it already exists we log and
-      #    proceed to (re)push. GH_TOKEN is the App token via env (never echoed).
+      # 3. Create the target repo. Idempotent: if it already exists we log and
+      #    proceed to (re)push. GH_TOKEN is the PAT via env (never echoed).
       - name: Create target repository (idempotent)
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.SCAFFOLDER_CREATE_TOKEN }}
           OWNER: ${{ inputs.owner }}
           REPO_DESC: ${{ inputs.description }}
         run: |
           set -euo pipefail
-          if gh repo view "$OWNER/$APP_KEBAB" >/dev/null 2>&1; then
-            echo "Repo $OWNER/$APP_KEBAB already exists — proceeding to push (idempotent)."
+          if gh repo view "$OWNER/$TARGET_REPO" >/dev/null 2>&1; then
+            echo "Repo $OWNER/$TARGET_REPO already exists — proceeding to push (idempotent)."
           else
-            gh repo create "$OWNER/$APP_KEBAB" --private --description "$REPO_DESC"
-            echo "Created $OWNER/$APP_KEBAB (private)."
+            gh repo create "$OWNER/$TARGET_REPO" --private --description "$REPO_DESC"
+            echo "Created $OWNER/$TARGET_REPO (private)."
           fi
 
-      # 5. Render this template into $RUNNER_TEMP/rendered with the new identity.
+      # 4. Render this template into $RUNNER_TEMP/rendered with the new identity.
+      #    Render uses the CLEAN code identity (APP_PASCAL/APP_KEBAB), never the
+      #    suffixed TARGET_REPO — the scaffolded code stays clean.
       - name: Render template
         run: |
           set -euo pipefail
           bash scripts/scaffold-render.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/rendered" "$APP_PASCAL" "$APP_KEBAB"
 
-      # 6. Initialize a fresh history in the rendered tree and push it to the new
-      #    repo. The App token is injected into the remote URL from an env var and
-      #    is auto-masked in logs; it is never printed by the script itself.
+      # 5. Initialize a fresh history in the rendered tree and push it to the new
+      #    repo. The PAT is injected into the remote URL from an env var and is
+      #    auto-masked in logs; it is never printed by the script itself.
       - name: Commit and push rendered app
         env:
-          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          GIT_TOKEN: ${{ secrets.SCAFFOLDER_CREATE_TOKEN }}
           OWNER: ${{ inputs.owner }}
         run: |
           set -euo pipefail
@@ -153,15 +169,15 @@ jobs:
           git config user.email "platform-scaffolder[bot]@users.noreply.github.com"
           git add -A
           git commit -m "chore: scaffold ${APP_PASCAL} from net-hexagonal template"
-          git remote add origin "https://x-access-token:${GIT_TOKEN}@github.com/${OWNER}/${APP_KEBAB}.git"
+          git remote add origin "https://x-access-token:${GIT_TOKEN}@github.com/${OWNER}/${TARGET_REPO}.git"
           git push -u origin main
 
-      # 7. Report the new repo URL (also surfaced as a workflow notice).
+      # 6. Report the new repo URL (also surfaced as a workflow notice).
       - name: Report
         env:
           OWNER: ${{ inputs.owner }}
         run: |
           set -euo pipefail
-          url="https://github.com/${OWNER}/${APP_KEBAB}"
+          url="https://github.com/${OWNER}/${TARGET_REPO}"
           echo "Scaffolded ${APP_PASCAL} → ${url}"
           echo "::notice title=Scaffolded app::${APP_PASCAL} → ${url}"
