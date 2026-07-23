@@ -15,38 +15,45 @@ so the orchestrator never needs Git write credentials or a working tree.
 The orchestrator's **`POST /api/v1/apps`** dispatches this `workflow_dispatch`
 with the requested app identity. Inputs:
 
-| Input         | Required | Default        | Purpose                                                        |
-|---------------|----------|----------------|----------------------------------------------------------------|
-| `appName`     | yes      | —              | New app name (e.g. `orders`, `my-svc`). Drives the identities. |
-| `owner`       | no       | `lurodrisilva` | GitHub user/org that owns the new repo.                        |
-| `domain`      | no       | `account`      | Reserved for the future domain-rename (see Limitations).       |
-| `description` | no       | `""`           | Description for the new repository.                             |
+| Input         | Required | Default        | Purpose                                                                    |
+|---------------|----------|----------------|----------------------------------------------------------------------------|
+| `appName`     | yes      | —              | New app name (e.g. `orders`, `my-svc`). Drives the **code** identities.     |
+| `repoName`    | no       | kebab(appName) | Target repo name — the orchestrator passes `appName` + a random suffix so repeated scaffolds never collide. Kept separate from `appName` so the code identity stays clean. |
+| `owner`       | no       | `lurodrisilva` | GitHub user/org that owns the new repo.                                     |
+| `domain`      | no       | `account`      | Reserved for the future domain-rename (see Limitations).                    |
+| `description` | no       | `""`           | Description for the new repository.                                         |
 
 ## What it does
 
 1. Checks out this template.
-2. Mints a short-lived **GitHub App** installation token scoped to `owner`.
-3. Computes two identities from `appName`:
+2. Computes the **code** identities from `appName`, plus the **target repo** name:
    - **PascalCase** (`orders` → `Orders`, `my-svc` → `MySvc`) — namespaces, `.slnx`, `.csproj`.
-   - **kebab-case** (`orders`, `my-svc`) — Helm/chart/k8s names **and** the new repo name.
-4. Creates `owner/<kebab>` as a **private** repo (idempotent — if it already exists it just re-pushes).
-5. Runs [`scripts/scaffold-render.sh`](../scripts/scaffold-render.sh) to render this
-   template into a temp dir with the new identity.
-6. `git init` a fresh history in the rendered tree, commits as the scaffolder bot,
-   and pushes to `owner/<kebab>`.
-7. Reports the new repo URL.
+   - **kebab-case** (`orders`, `my-svc`) — Helm/chart/k8s names (the app identity).
+   - **`TARGET_REPO`** — `repoName` if supplied, else the kebab. Validated as a GitHub slug.
+3. Creates `owner/<TARGET_REPO>` as a **private** repo (idempotent — if it already exists it just re-pushes).
+4. Runs [`scripts/scaffold-render.sh`](../scripts/scaffold-render.sh) to render this
+   template into a temp dir with the **clean** identity (never the suffixed repo name).
+5. `git init` a fresh history in the rendered tree, commits as the scaffolder bot,
+   and pushes to `owner/<TARGET_REPO>`.
+6. Reports the new repo URL.
 
-## Authentication — the GitHub App
+## Authentication — a fine-grained PAT (not the App)
 
-Both the workflow and the orchestrator use the **same GitHub App**. Its
-credentials live in this repo's **Actions secrets**:
+Repo create + push use a **fine-grained Personal Access Token** in this repo's
+**Actions secrets**:
 
-- `SCAFFOLDER_APP_ID` — the App's numeric app id.
-- `SCAFFOLDER_APP_PRIVATE_KEY` — the App's PEM private key.
+- `SCAFFOLDER_CREATE_TOKEN` — fine-grained PAT, resource owner = the account that
+  owns the new repos, repository permissions **Administration: write** (create)
+  and **Contents: write** (push), scope **All repositories** (the target repo
+  does not exist yet).
 
-The App must be installed on `owner` with permission to **create repositories**
-and **push code**. This is the same App the orchestrator authenticates as to
-dispatch this workflow — documented in the harness **Phase F** proof doc.
+**Why a PAT and not the GitHub App** (ADR-0009 amendment 2026-07-20): `owner` is a
+**user** account, and a GitHub App installation token **cannot create a repository
+in a user account** — `POST /user/repos` only accepts a user token. The GitHub App
+the orchestrator holds is used **only** by the orchestrator to *dispatch* this
+workflow and *read* repo existence; it is never used inside this run. (Scaffolding
+into an **org** instead would let a single App do everything — the recorded
+alternative — but the personal-account path was chosen for Phase F.)
 
 ## The render engine
 
