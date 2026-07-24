@@ -218,8 +218,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Build-provenance attestation only persists on repos GitHub supports for it
+      # (public repos, or org-owned repos). A user-owned PRIVATE repo — which every
+      # scaffold is (scaffold-new-app.yml creates `--private`) — makes the attest API
+      # fail with "Feature not available for user-owned private repositories". Gate on
+      # visibility so private scaffolds go green without provenance; public/promoted
+      # repos still get it.
       - name: Attest build provenance (SLSA v1)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -400,7 +406,10 @@ jobs:
           echo "chart_digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Umbrella digest: ${CHART_DIGEST}"
 
+      # Same visibility gate as the image attestation above: the attest API fails on
+      # user-owned private repos, so skip provenance there (chart still publishes).
       - name: Attest umbrella provenance (SLSA v1)
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ghcr.io/lurodrisilva/helm-charts/hex-scaffold-umbrella
