@@ -222,6 +222,44 @@ jobs:
           fi
           echo "mixing instanceName with a literal fails closed, as intended"
 
+      - name: Assert a scaffolded app gets a database named after itself
+        run: |
+          # The scaffolder's identity substitution is PascalCase/kebab and cannot
+          # reach the database name, so without an explicit rewrite every
+          # scaffolded app provisions an Azure server called acct-<random>. That
+          # is not hypothetical: aks-test currently runs orders-v4 against
+          # acct-6584520516bb.
+          #
+          # Asserted on the RENDER rather than on values.yaml, because the render
+          # is what reaches the cluster — and because `acct` legitimately remains
+          # in this repo's comments and in deploy/argocd/*.example.yaml, so a
+          # "no acct anywhere" check would either fail or force gutting docs.
+          DB_SIZE=medium DB_VERSION=15 DB_STORAGE_MB=65536 \
+            bash scripts/scaffold-render.sh . /tmp/scaffolded OrdersCi orders-ci
+          helm dependency update /tmp/scaffolded/deploy/umbrella >/dev/null
+          helm template orders-ci /tmp/scaffolded/deploy/umbrella > /tmp/scaffolded.yaml
+
+          xr="$(yq -r 'select(.kind == "PostgresInstance") | .metadata.name' /tmp/scaffolded.yaml | head -1)"
+          [ "$xr" = "orders-ci" ] || { echo "::error::scaffolded XR is '$xr', expected 'orders-ci'" && exit 1; }
+
+          # databaseName is dropped by the render so the building block derives it.
+          db="$(yq -r 'select(.kind == "PostgresInstance") | .spec.databaseName' /tmp/scaffolded.yaml | head -1)"
+          [ "$db" = "orders-ci-db" ] || { echo "::error::scaffolded databaseName is '$db', expected 'orders-ci-db'" && exit 1; }
+
+          # Sizing must survive the scaffold, or the wizard's choices are decoration.
+          for pair in 'size:medium' 'version:15' 'storageMb:65536'; do
+            k="${pair%%:*}"; want="${pair##*:}"
+            got="$(yq -r "select(.kind == \"PostgresInstance\") | .spec.${k}" /tmp/scaffolded.yaml | head -1)"
+            [ "$got" = "$want" ] || { echo "::error::scaffolded spec.${k} is '$got', expected '$want'" && exit 1; }
+          done
+
+          # Nothing anywhere in the scaffolded render may still bind the template's
+          # sample instance — that is the whole failure this rewrite exists to stop.
+          if grep -oE '\bacct-(postgres-conn|admin-password|db)\b' /tmp/scaffolded.yaml | sort -u | grep .; then
+            echo "::error::the scaffolded app still references the template's acct database" && exit 1
+          fi
+          echo "scaffolded app provisions orders-ci / orders-ci-db, sized medium/15/65536"
+
       - name: Assert an explicit ref still overrides the derivation
         run: |
           # The derivation is a default, not a cage: an unusual Secret layout must
