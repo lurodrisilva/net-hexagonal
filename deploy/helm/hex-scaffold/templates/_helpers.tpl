@@ -86,6 +86,60 @@ external endpoint. Otherwise the value falls back to secrets.externalApiBaseUrl.
 {{- end -}}
 
 {{/*
+Resolves the four bind secretKeyRefs, deriving them from a single `instanceName`
+when they are not given explicitly. Emits YAML; callers do:
+
+    {{- $refs := include "hex-scaffold.pgBindRefs" . | fromYaml -}}
+
+WHY THIS EXISTS, AND WHY IT IS ONE HELPER
+
+The SQL building block names its composed Secrets after the instance, so the
+four refs are four restatements of ONE fact — the instance name. Restating it
+four times is not a style problem: the XR name and the refs are independent
+values, so a rename that misses one yields an app that waits forever on a Secret
+nothing will ever create. `instanceName` collapses them to a single knob.
+
+It must be ONE resolver rather than a default applied where the refs are read,
+because three call sites read them — and one of them is `pgBindHostEnv`, which
+feeds the migration Job's wait initContainer (G-T7). A resolver that only ran
+inside `pgBindEnv` would leave the wait container with an empty literal PGHOST:
+a bind that is syntactically fine and silently wrong, which is precisely what
+`validatePgBind` below exists to prevent.
+
+THE NAMES ARE THE AZURE-FLEXIBLESERVER CONTRACT, NOT A NEUTRAL ONE
+
+`<instance>-postgres-conn` (host/username/dbname) + `<instance>-admin-password`
+(provider-generated) is the azure-flexibleserver contract specifically. ADR-0020
+records that no single contract spans both engines — cloudnativepg yields one
+basic-auth `<name>-secret` and host `<name>-rw`. So `instanceName` is shorthand
+for the azure path only; the cloudnativepg path keeps using the literals
+(`secretName` / `host` / `database`), and mixing the two is rejected below.
+
+Explicit refs always win, so an unusual layout stays expressible.
+*/}}
+{{- define "hex-scaffold.pgBindRefs" -}}
+{{- $b := .Values.postgres.bindBuildingBlock -}}
+{{- $n := $b.instanceName | default "" -}}
+{{- $derived := dict -}}
+{{- if $n -}}
+{{- $conn := printf "%s-postgres-conn" $n -}}
+{{- $_ := set $derived "hostFrom" (dict "name" $conn "key" "host") -}}
+{{- $_ := set $derived "usernameFrom" (dict "name" $conn "key" "username") -}}
+{{- $_ := set $derived "databaseFrom" (dict "name" $conn "key" "dbname") -}}
+{{- $_ := set $derived "passwordFrom" (dict "name" (printf "%s-admin-password" $n) "key" "password") -}}
+{{- end -}}
+{{- $explicit := dict -}}
+{{- range $k := list "hostFrom" "usernameFrom" "passwordFrom" "databaseFrom" -}}
+{{- $v := index $b $k -}}
+{{- if $v -}}
+{{- $_ := set $explicit $k $v -}}
+{{- end -}}
+{{- end -}}
+{{- /* merge fills only keys absent from $explicit, so explicit refs win. */ -}}
+{{- toYaml (merge $explicit $derived) -}}
+{{- end -}}
+
+{{/*
 Fails the render when bindBuildingBlock is enabled but under-specified. Every
 field below must resolve to either a literal or a secretKeyRef; a missing one
 used to render `Host=;` — a connection string that is syntactically fine and
@@ -93,14 +147,18 @@ silently wrong. Fail closed instead.
 */}}
 {{- define "hex-scaffold.validatePgBind" -}}
 {{- $b := .Values.postgres.bindBuildingBlock -}}
+{{- $refs := include "hex-scaffold.pgBindRefs" . | fromYaml -}}
 {{- if $b.enabled -}}
-{{- if and (not $b.host) (not $b.hostFrom) -}}
-{{- fail "\n\npostgres.bindBuildingBlock is enabled but neither `host` nor `hostFrom` is set.\n\nSet `host` for an in-cluster engine (cloudnativepg: <name>-rw), or `hostFrom`\nfor a Crossplane-provisioned server whose FQDN is unknown until it exists:\n\n  hostFrom: {name: <name>-postgres-conn, key: host}\n" -}}
+{{- if and $b.instanceName (or $b.secretName $b.host $b.database) -}}
+{{- fail "\n\npostgres.bindBuildingBlock sets BOTH `instanceName` and a literal\n(`secretName` / `host` / `database`).\n\nThose belong to different engines and there is no contract spanning both\n(ADR-0020): `instanceName` derives the azure-flexibleserver Secrets\n<instance>-postgres-conn + <instance>-admin-password, while the literals are the\ncloudnativepg layout (<name>-secret, host <name>-rw).\n\nPick one:\n\n  azure-flexibleserver:  instanceName: <name>\n  cloudnativepg:         secretName / host / database\n\nTo override a single derived ref, set that `*From` explicitly instead — an\nexplicit ref always wins over the derivation.\n" -}}
 {{- end -}}
-{{- if and (not $b.database) (not $b.databaseFrom) -}}
-{{- fail "\n\npostgres.bindBuildingBlock is enabled but neither `database` nor `databaseFrom` is set.\n" -}}
+{{- if and (not $b.host) (not $refs.hostFrom) -}}
+{{- fail "\n\npostgres.bindBuildingBlock is enabled but neither `host` nor `hostFrom` is set.\n\nSet `host` for an in-cluster engine (cloudnativepg: <name>-rw), or — for a\nCrossplane-provisioned server whose FQDN is unknown until it exists — set\n`instanceName` to derive all four refs at once:\n\n  instanceName: <name>\n\nor set the one ref explicitly:\n\n  hostFrom: {name: <name>-postgres-conn, key: host}\n" -}}
 {{- end -}}
-{{- if and (not $b.secretName) (not (and $b.usernameFrom $b.passwordFrom)) -}}
+{{- if and (not $b.database) (not $refs.databaseFrom) -}}
+{{- fail "\n\npostgres.bindBuildingBlock is enabled but neither `database` nor `databaseFrom` is set.\nSet `instanceName` to derive it, or set `databaseFrom` explicitly.\n" -}}
+{{- end -}}
+{{- if and (not $b.secretName) (not (and $refs.usernameFrom $refs.passwordFrom)) -}}
 {{- fail "\n\npostgres.bindBuildingBlock is enabled but the credentials are unresolvable.\n\nSet `secretName` (one basic-auth Secret with username+password — cloudnativepg),\nor BOTH `usernameFrom` and `passwordFrom` — azure-flexibleserver splits them\nacross two Secrets:\n\n  usernameFrom: {name: <name>-postgres-conn,  key: username}\n  passwordFrom: {name: <name>-admin-password, key: password}\n" -}}
 {{- end -}}
 {{- end -}}
@@ -135,8 +193,9 @@ deterministic in-cluster Service name and stays a literal.
 */}}
 {{- define "hex-scaffold.pgBindHostEnv" -}}
 {{- $b := .Values.postgres.bindBuildingBlock -}}
-{{- if $b.hostFrom -}}
-{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGHOST" "ref" $b.hostFrom) -}}
+{{- $refs := include "hex-scaffold.pgBindRefs" . | fromYaml -}}
+{{- if $refs.hostFrom -}}
+{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGHOST" "ref" $refs.hostFrom) -}}
 {{- else -}}
 - name: PGHOST
   value: {{ $b.host | quote }}
@@ -159,13 +218,14 @@ the whole engine story from this chart's side: it never learns an engine name.
 */}}
 {{- define "hex-scaffold.pgBindEnv" -}}
 {{- $b := .Values.postgres.bindBuildingBlock -}}
+{{- $refs := include "hex-scaffold.pgBindRefs" . | fromYaml -}}
 {{- include "hex-scaffold.validatePgBind" . -}}
 {{- include "hex-scaffold.pgBindHostEnv" . -}}
-{{- if $b.databaseFrom -}}
-{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGDATABASE" "ref" $b.databaseFrom) -}}
+{{- if $refs.databaseFrom -}}
+{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGDATABASE" "ref" $refs.databaseFrom) -}}
 {{- end -}}
-{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGUSER" "ref" $b.usernameFrom "secret" $b.secretName "key" "username") -}}
-{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGPASSWORD" "ref" $b.passwordFrom "secret" $b.secretName "key" "password") -}}
+{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGUSER" "ref" $refs.usernameFrom "secret" $b.secretName "key" "username") -}}
+{{- include "hex-scaffold.pgBindSecretEnv" (dict "var" "PGPASSWORD" "ref" $refs.passwordFrom "secret" $b.secretName "key" "password") -}}
 - name: ConnectionStrings__PostgreSql
-  value: "Host=$(PGHOST);Port=$(PGPORT);Database={{ if $b.databaseFrom }}$(PGDATABASE){{ else }}{{ $b.database }}{{ end }};Username=$(PGUSER);Password=$(PGPASSWORD);Maximum Pool Size=100"
+  value: "Host=$(PGHOST);Port=$(PGPORT);Database={{ if $refs.databaseFrom }}$(PGDATABASE){{ else }}{{ $b.database }}{{ end }};Username=$(PGUSER);Password=$(PGPASSWORD);Maximum Pool Size=100"
 {{- end -}}

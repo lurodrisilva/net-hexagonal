@@ -23,7 +23,7 @@ dependencies:
   # The application. Local path — this umbrella ships inside the app repo
   # (rendered from the net-hexagonal template), so the app's own CI packages it.
   - name: hex-scaffold
-    version: "0.2.0"
+    version: "0.3.0"
     repository: "file://../helm/hex-scaffold"
 
   # The SQL building block. Resolved from the platform OCI registry. Aliased to

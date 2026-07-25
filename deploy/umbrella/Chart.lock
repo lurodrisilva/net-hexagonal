@@ -1,9 +1,9 @@
 dependencies:
 - name: hex-scaffold
   repository: file://../helm/hex-scaffold
-  version: 0.2.0
+  version: 0.3.0
 - name: plat-eng-sql-database-package
   repository: oci://ghcr.io/lurodrisilva/helm-charts
   version: 0.2.0
-digest: sha256:6f89dc9f95ac03442f93ff0c35b16f383aca2bf744eab0c8ff9a715220426792
-generated: "2026-07-17T02:34:32.379973-03:00"
+digest: sha256:82253e5e693246c9957c5518ec99b0d9063d216bf875b929374afc6a48c59cb4
+generated: "2026-07-25T17:36:56.59535-03:00"
