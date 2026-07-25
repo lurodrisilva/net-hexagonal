@@ -96,6 +96,35 @@ jobs:
             echo "::error::umbrella rendered a CNPG Cluster under engine=azure-flexibleserver" && exit 1
           fi
 
+      - name: Assert the app binds the database the umbrella actually provisions
+        run: |
+          # The invariant this deploy unit lives or dies on: the app's bind must
+          # point at the Secrets composed off the PostgresInstance the umbrella
+          # renders. The XR name and the bind are separate values in values.yaml,
+          # so nothing but this check stops them drifting apart — and the failure
+          # mode is silent. The app comes up, waits forever on a Secret nothing
+          # will ever create, and the only symptom is a pod that never goes Ready.
+          #
+          # Asserted on the RENDER, not on values.yaml, so it holds no matter who
+          # wrote the values — this chart, the scaffolder, or the orchestrator
+          # baking them in at compose time.
+          xr="$(yq -r 'select(.kind == "PostgresInstance") | .metadata.name' /tmp/umbrella.yaml | head -1)"
+          if [ -z "$xr" ]; then
+            echo "::error::no PostgresInstance rendered — cannot verify the bind" && exit 1
+          fi
+          echo "PostgresInstance: ${xr}"
+          for secret in "${xr}-postgres-conn" "${xr}-admin-password"; do
+            if ! grep -q "name: \"${secret}\"" /tmp/umbrella.yaml; then
+              echo "::error::the app does not bind ${secret} — the bind has drifted from the XR name ${xr}" && exit 1
+            fi
+          done
+          # And nothing may bind a *different* instance's Secrets.
+          if grep -oE '[a-z0-9-]+-(postgres-conn|admin-password)' /tmp/umbrella.yaml \
+               | sort -u | grep -vE "^${xr}-(postgres-conn|admin-password)$"; then
+            echo "::error::the umbrella binds Secrets belonging to an instance other than ${xr}" && exit 1
+          fi
+          echo "the app binds exactly the database the umbrella provisions"
+
       - name: Assert no plaintext credential renders
         run: |
           # Every credential must arrive by secretKeyRef and reach the app through

@@ -1,10 +1,11 @@
 # ---------------------------------------------------------------------------
 # hex-scaffold-umbrella / values.yaml
 #
-# ONE knob to keep in sync: the app/database name (example: "acct"). It names the
-# PostgresInstance XR and every Secret the control plane composes off it —
-# <name>-postgres-conn and <name>-admin-password. The hex-scaffold bind block
-# below must point at those exact names.
+# ONE name, stated twice: sqldatabase.databases.sql[0].name and
+# hex-scaffold.postgres.bindBuildingBlock.instanceName (example: "acct"). It names
+# the PostgresInstance XR, and hex-scaffold 0.3.0 derives every Secret ref the
+# control plane composes off it — <name>-postgres-conn and <name>-admin-password.
+# Keep the two in sync; nothing else in this file repeats the name.
 #
 # The orchestrator (ADR-0008) supplies these per-instance values and resolves
 # this chart by version; it does not edit the chart.
@@ -73,25 +74,22 @@ hex-scaffold:
   # merges them — a Secret cannot reference another Secret, and the password does
   # not exist until the provider makes it. This bind is what bridges them.
   #
-  # Under cloudnativepg, replace the *From refs with the literal form:
+  # instanceName is the SAME value as sqldatabase.databases.sql[0].name above —
+  # that is the whole point of it. hex-scaffold 0.3.0 derives all four refs from
+  # it, so the database name and the bind are one fact instead of five copies of
+  # one. Five copies is not a style problem: the XR name and the refs are
+  # independent values, so a rename that misses one yields an app waiting forever
+  # on a Secret nothing will ever create.
+  #
+  # Under cloudnativepg, drop instanceName and use the literal form instead
+  # (setting both is rejected — the two engines have no shared contract):
   #     secretName: acct-secret
   #     host: acct-rw
   #     database: acct-db
   postgres:
     bindBuildingBlock:
       enabled: true
-      hostFrom:
-        name: acct-postgres-conn
-        key: host
-      usernameFrom:
-        name: acct-postgres-conn
-        key: username
-      passwordFrom:
-        name: acct-admin-password
-        key: password
-      databaseFrom:
-        name: acct-postgres-conn
-        key: dbname
+      instanceName: acct
 
   migrations:
     enabled: true              # Sync hook (wave 1) runs against the Flexible Server

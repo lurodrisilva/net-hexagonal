@@ -15,7 +15,11 @@ type: application
 # 0.2.0 is BREAKING: the SQL building block's default engine flipped from
 # in-cluster CloudNativePG to a billed Azure Flexible Server (ADR-0020), and the
 # app's bind moved from one literal-host Secret to two composed Secrets (G-T6).
-version: 0.2.0
+#
+# 0.3.0 is NOT breaking: the bind block collapsed from four secretKeyRefs to the
+# single hex-scaffold 0.3.0 `instanceName` knob. Same Secrets, same keys, same
+# rendered output — one fact instead of five copies of it.
+version: 0.3.0
 appVersion: "latest"
 kubeVersion: ">=1.27.0"
 
