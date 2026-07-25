@@ -222,7 +222,7 @@ jobs:
           fi
           echo "mixing instanceName with a literal fails closed, as intended"
 
-      - name: Assert a scaffolded app gets a database named after itself
+      - name: Assert a scaffolded app gets a database and an image of its own
         run: |
           # The scaffolder's identity substitution is PascalCase/kebab and cannot
           # reach the database name, so without an explicit rewrite every
@@ -235,6 +235,7 @@ jobs:
           # in this repo's comments and in deploy/argocd/*.example.yaml, so a
           # "no acct anywhere" check would either fail or force gutting docs.
           DB_SIZE=medium DB_VERSION=15 DB_STORAGE_MB=65536 \
+          IMAGE_REPOSITORY=ghcr.io/example-org/orders-ci-ab12 \
             bash scripts/scaffold-render.sh . /tmp/scaffolded OrdersCi orders-ci
           helm dependency update /tmp/scaffolded/deploy/umbrella >/dev/null
           helm template orders-ci /tmp/scaffolded/deploy/umbrella > /tmp/scaffolded.yaml
@@ -258,7 +259,28 @@ jobs:
           if grep -oE '\bacct-(postgres-conn|admin-password|db)\b' /tmp/scaffolded.yaml | sort -u | grep .; then
             echo "::error::the scaffolded app still references the template's acct database" && exit 1
           fi
-          echo "scaffolded app provisions orders-ci / orders-ci-db, sized medium/15/65536"
+
+          # ...and the same class of leak one layer over: the image repository is
+          # a plain values default naming THIS repository, so it is invisible to
+          # the identity substitution and rides into every scaffolded app. A
+          # scaffolded app that deploys the template's image is not the app the
+          # developer asked for, and once release CI pins the new app's digest
+          # onto that repository the reference stops resolving at all.
+          if grep -q 'net-hexagonal' /tmp/scaffolded.yaml; then
+            echo "::error::the scaffolded render still references the template repository" && exit 1
+          fi
+          # Process substitution, not a pipe: an `exit 1` inside a piped loop
+          # runs in a subshell and would leave the step green.
+          while IFS= read -r img; do
+            case "$img" in
+              ghcr.io/*)
+                [ "$img" = "ghcr.io/example-org/orders-ci-ab12:latest" ] || {
+                  echo "::error::scaffolded render pulls '$img', expected ghcr.io/example-org/orders-ci-ab12:latest"
+                  exit 1; } ;;
+              *) ;;   # busybox / wiremock sidecars are not app images
+            esac
+          done < <(grep -oE 'image: "?[^"[:space:]]+' /tmp/scaffolded.yaml | sed -E 's/^image: "?//' | sort -u)
+          echo "scaffolded app provisions orders-ci / orders-ci-db (medium/15/65536) and runs its own image"
 
       - name: Assert an explicit ref still overrides the derivation
         run: |
@@ -454,7 +476,8 @@ jobs:
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved chart version: ${CHART_VERSION} (base ${BASE})"
 
-      - name: Pin the image digest into the umbrella
+      - name: Pin the image into the umbrella
+        id: pin
         env:
           DIGEST: ${{ needs.build-and-push.outputs.digest }}
         run: |
@@ -463,33 +486,63 @@ jobs:
             echo "::error::build-and-push produced no digest — refusing to publish an unpinned umbrella"
             exit 1
           fi
+          # WHERE the image lives is pinned alongside WHICH image it is, and the
+          # first half is not redundant. `image.repository` is an ordinary values
+          # default — ghcr.io/<owner>/net-hexagonal in this repo — and
+          # scaffold-render.sh substitutes IDENTITY TOKENS, of which this
+          # repository's own name is not one. A scaffolded app therefore inherits
+          # the template's repository, and pinning only the digest publishes
+          # ghcr.io/<owner>/net-hexagonal@sha256:<the scaffolded app's digest>:
+          # a real digest in the wrong repository, so the registry answers
+          # "manifest unknown" and the pod never starts. Every build signal stays
+          # green, which is what made it survive this long.
+          #
+          # github.repository is whichever repo's CI is running — this template's
+          # or a scaffolded app's — so one expression is correct for both and
+          # cannot drift. Lowercased because GHCR rejects an uppercase path
+          # segment while GitHub preserves the owner's casing.
+          IMAGE="$(printf '%s/%s' "$REGISTRY" "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
           # Both the app and the migration Job run the same image; the migration
           # bundle is baked into it. digest wins over tag in the chart helpers.
-          DIGEST="$DIGEST" yq -i '
+          DIGEST="$DIGEST" IMAGE="$IMAGE" yq -i '
+            .hex-scaffold.image.repository = strenv(IMAGE) |
             .hex-scaffold.image.digest = strenv(DIGEST) |
+            .hex-scaffold.migrations.image.repository = strenv(IMAGE) |
             .hex-scaffold.migrations.image.digest = strenv(DIGEST)
           ' "$UMBRELLA_DIR/values.yaml"
-          echo "Pinned image digest: ${DIGEST}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Pinned image: ${IMAGE}@${DIGEST}"
 
       - name: Resolve umbrella dependencies
         run: helm dependency update "$UMBRELLA_DIR"
 
-      - name: Assert the umbrella renders the pinned digest
+      - name: Assert the umbrella renders the pinned image
         env:
           DIGEST: ${{ needs.build-and-push.outputs.digest }}
+          IMAGE: ${{ steps.pin.outputs.image }}
         run: |
           set -euo pipefail
           helm template acct "$UMBRELLA_DIR" > /tmp/pinned.yaml
-          # Publishing a chart that does not actually reference the digest would
+          # Publishing a chart that does not actually reference the image would
           # defeat the entire point, so prove it rather than trust the patch.
-          if ! grep -q "@${DIGEST}" /tmp/pinned.yaml; then
-            echo "::error::rendered umbrella does not reference ${DIGEST}" && exit 1
+          # Asserted as the WHOLE reference: "@${DIGEST}" alone passed happily
+          # while the repository in front of it belonged to another repo, which
+          # is the exact failure that shipped.
+          if ! grep -q "${IMAGE}@${DIGEST}" /tmp/pinned.yaml; then
+            echo "::error::rendered umbrella does not reference ${IMAGE}@${DIGEST}" && exit 1
           fi
           # ...and prove no mutable tag survived on the app image.
           if grep -qE 'image: "?ghcr\.io/[^"@]*:latest"?' /tmp/pinned.yaml; then
             echo "::error::umbrella still references a mutable :latest tag" && exit 1
           fi
-          echo "umbrella renders the pinned digest and no mutable app tag"
+          # ...and that NO ghcr.io image points anywhere but at this build. A
+          # second, wrong-but-plausible reference is invisible to the checks
+          # above, because both are satisfied by the one correct reference.
+          if grep -oE 'image: "?ghcr\.io/[^"[:space:]]+' /tmp/pinned.yaml \
+               | sed -E 's/^image: "?//' | sort -u | grep -v "^${IMAGE}@${DIGEST}$" | grep .; then
+            echo "::error::the umbrella references a ghcr.io image other than ${IMAGE}@${DIGEST}" && exit 1
+          fi
+          echo "umbrella renders ${IMAGE}@${DIGEST} and nothing else from ghcr.io"
 
       - name: Package
         id: package

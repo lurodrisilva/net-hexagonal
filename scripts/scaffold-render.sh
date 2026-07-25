@@ -20,9 +20,11 @@
 #
 # Optional environment (unset = keep the template's value, so the platform
 # default lives in exactly one place — deploy/umbrella/values.yaml):
-#   DB_SIZE         small | medium | large
-#   DB_VERSION      PostgreSQL major, e.g. "16"
-#   DB_STORAGE_MB   provisioned storage in MB
+#   DB_SIZE           small | medium | large
+#   DB_VERSION        PostgreSQL major, e.g. "16"
+#   DB_STORAGE_MB     provisioned storage in MB
+#   IMAGE_REPOSITORY  the app's own container image repository, e.g.
+#                     ghcr.io/<owner>/<repo> (see step 5)
 #
 # What it does:
 #   1. Copies the source's *tracked* content into <dest-dir>, EXCLUDING:
@@ -51,6 +53,17 @@
 #      key-anchored rather than token substitutions, and each is verified after
 #      the fact: the failure worth guarding against is a silent no-op that ships
 #      the sample name under a green build.
+#   5. Points the app at its OWN container image, when IMAGE_REPOSITORY is set:
+#        image.repository             -> $IMAGE_REPOSITORY
+#        migrations.image.repository  -> $IMAGE_REPOSITORY
+#      Same blind spot as step 4, one layer over. The identity tokens in step 2
+#      are PascalCase/kebab; the image default is `ghcr.io/<owner>/net-hexagonal`
+#      and "net-hexagonal" is THIS REPOSITORY'S OWN NAME, not a token, so it
+#      survives verbatim into every scaffolded app. Release CI then pins the
+#      scaffolded app's freshly-built digest onto the template's repository —
+#      `ghcr.io/<owner>/net-hexagonal@sha256:<the new app's digest>` — a manifest
+#      that does not exist there. The pod ImagePullBackOffs while every build
+#      signal stays green.
 #
 # DELIBERATELY NOT DONE (documented follow-up):
 #   The sample DOMAIN word "account" (AccountAggregate, AccountBatchProcessor,
@@ -247,6 +260,44 @@ else
   # (a chart-only consumer), and failing would break that. Say so loudly instead
   # of leaving the caller to infer it from a database that never appears.
   echo "scaffold-render: WARNING no deploy/umbrella/values.yaml — database not named" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Point the app at its own container image.
+# ---------------------------------------------------------------------------
+# The token substitution in step 2 cannot reach this either, and for the same
+# structural reason the database name was out of reach: the value to replace is
+# not an identity token. `image.repository` defaults to
+# ghcr.io/<owner>/net-hexagonal — this repository's name, which no scaffolded app
+# shares and no `hex-scaffold` -> <app> rewrite touches.
+#
+# Left alone the scaffolded app publishes its image to ghcr.io/<owner>/<its-repo>
+# and then deploys ghcr.io/<owner>/net-hexagonal@<its digest>: the digest is real
+# but it lives in a different repository, so the registry answers "manifest
+# unknown" and the pod never starts. Nothing upstream catches it — the chart
+# renders, the digest is pinned, CI is green.
+#
+# Unset leaves the template's value, so a chart-only consumer (and this repo's
+# own release) is unaffected; release CI re-pins the repository at package time
+# regardless, which is the belt to this braces.
+APP_VALUES="$DEST/deploy/helm/${APP_KEBAB}/values.yaml"
+if [ -n "${IMAGE_REPOSITORY:-}" ] && [ -f "$APP_VALUES" ]; then
+  # Anchored on the key, not on the template's repository literal: hardcoding
+  # "net-hexagonal" here would silently stop matching the day this template is
+  # renamed or forked, and a silent no-op is the failure mode being guarded.
+  before=$(grep -cE '^[[:space:]]*repository: ghcr\.io/' "$APP_VALUES" || true)
+  sed -i.bak -E "s|^([[:space:]]*repository: )ghcr\.io/.*$|\1${IMAGE_REPOSITORY}|" "$APP_VALUES"
+  rm -f "$APP_VALUES.bak"
+  after=$(grep -cE "^[[:space:]]*repository: ${IMAGE_REPOSITORY}\$" "$APP_VALUES" || true)
+  if [ "${before:-0}" -eq 0 ] || [ "${before:-0}" -ne "${after:-0}" ]; then
+    echo "error: expected to repoint ${before:-0} image repositories, repointed ${after:-0}" >&2
+    echo "       (image.repository / migrations.image.repository in $APP_VALUES)" >&2
+    exit 1
+  fi
+  echo "scaffold-render: image repository -> ${IMAGE_REPOSITORY} (${after} refs)"
+elif [ -n "${IMAGE_REPOSITORY:-}" ]; then
+  echo "error: IMAGE_REPOSITORY set but $APP_VALUES does not exist" >&2
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------

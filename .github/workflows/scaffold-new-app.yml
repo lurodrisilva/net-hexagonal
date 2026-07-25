@@ -193,6 +193,7 @@ jobs:
           DB_SIZE: ${{ inputs.dbSize }}
           DB_VERSION: ${{ inputs.dbVersion }}
           DB_STORAGE_MB_INPUT: ${{ inputs.dbStorageMb }}
+          OWNER: ${{ inputs.owner }}
         run: |
           set -euo pipefail
           case "$DB_STORAGE_MB_INPUT" in
@@ -203,6 +204,14 @@ jobs:
             exit 1
           fi
           export DB_STORAGE_MB="$DB_STORAGE_MB_INPUT"
+          # The app's own image, so the scaffolded repo does not ship the
+          # TEMPLATE's image repository as its default. This is the only identity
+          # here keyed on TARGET_REPO rather than APP_KEBAB: release CI names the
+          # image after the github.repository context, which carries the suffix.
+          # Lowercased because GHCR rejects an uppercase path segment while
+          # GitHub preserves the owner's casing.
+          IMAGE_REPOSITORY="ghcr.io/$(printf '%s/%s' "$OWNER" "$TARGET_REPO" | tr '[:upper:]' '[:lower:]')"
+          export IMAGE_REPOSITORY
           bash scripts/scaffold-render.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/rendered" "$APP_PASCAL" "$APP_KEBAB"
 
       # 5. Initialize a fresh history in the rendered tree and push it to the new
