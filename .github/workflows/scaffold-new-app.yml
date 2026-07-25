@@ -29,6 +29,10 @@
 #   used inside this run.
 #
 # WHAT IT DOES NOT DO
+#   The render DOES name the app's database after the app (umbrella
+#   databases.sql[0].name + bindBuildingBlock.instanceName), so a scaffolded app
+#   provisions <app>-<uniquifier> on Azure rather than the template's acct-*.
+#   What it still does NOT do:
 #   The render is heuristic (sed-based; see scripts/scaffold-render.sh). It does
 #   NOT rename the sample DOMAIN ("account") — the scaffolded app keeps the
 #   reference domain. A real template engine + domain-rename is a documented
@@ -63,6 +67,23 @@ on:
         description: "Description for the new repository."
         required: false
         default: ""
+        type: string
+      dbSize:
+        description: "Database size. The enum IS the guardrail — the Composition maps it to an Azure SKU."
+        required: false
+        default: "small"
+        type: choice
+        options: [small, medium, large]
+      dbVersion:
+        description: "PostgreSQL major version."
+        required: false
+        default: "16"
+        type: choice
+        options: ["14", "15", "16"]
+      dbStorageMb:
+        description: "Provisioned storage in MB (min 32768). Growable; shrinking replaces the server."
+        required: false
+        default: "32768"
         type: string
 
 # Minimal token for this workflow: it only needs to read this template to render
@@ -163,8 +184,25 @@ jobs:
       #    Render uses the CLEAN code identity (APP_PASCAL/APP_KEBAB), never the
       #    suffixed TARGET_REPO — the scaffolded code stays clean.
       - name: Render template
+        env:
+          # dbSize / dbVersion are `type: choice`, so GitHub constrains them to the
+          # enum. dbStorageMb is free-form, so it is bound to an env var (never
+          # interpolated into the script body) and validated as digits below —
+          # both to keep it out of the shell and because the XRD floors it at
+          # 32768 and would otherwise reject the XR after the repo already exists.
+          DB_SIZE: ${{ inputs.dbSize }}
+          DB_VERSION: ${{ inputs.dbVersion }}
+          DB_STORAGE_MB_INPUT: ${{ inputs.dbStorageMb }}
         run: |
           set -euo pipefail
+          case "$DB_STORAGE_MB_INPUT" in
+            ''|*[!0-9]*) echo "::error::dbStorageMb must be digits, got '$DB_STORAGE_MB_INPUT'"; exit 1 ;;
+          esac
+          if [ "$DB_STORAGE_MB_INPUT" -lt 32768 ]; then
+            echo "::error::dbStorageMb must be at least 32768 (the XRD's minimum), got $DB_STORAGE_MB_INPUT"
+            exit 1
+          fi
+          export DB_STORAGE_MB="$DB_STORAGE_MB_INPUT"
           bash scripts/scaffold-render.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/rendered" "$APP_PASCAL" "$APP_KEBAB"
 
       # 5. Initialize a fresh history in the rendered tree and push it to the new

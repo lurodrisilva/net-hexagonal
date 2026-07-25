@@ -15,6 +15,14 @@
 #   dest-dir       empty/new directory to render into (created if missing)
 #   AppNamePascal  PascalCase identity, e.g. "Orders" or "MySvc" (namespaces / sln / csproj)
 #   app-name-kebab kebab-case identity, e.g. "orders" or "my-svc" (helm / chart / k8s names)
+#                  Capped at 50 chars: Azure caps Flexible Server names at 63 and
+#                  the platform appends a 13-char uniquifier.
+#
+# Optional environment (unset = keep the template's value, so the platform
+# default lives in exactly one place — deploy/umbrella/values.yaml):
+#   DB_SIZE         small | medium | large
+#   DB_VERSION      PostgreSQL major, e.g. "16"
+#   DB_STORAGE_MB   provisioned storage in MB
 #
 # What it does:
 #   1. Copies the source's *tracked* content into <dest-dir>, EXCLUDING:
@@ -30,6 +38,19 @@
 #        deploy/helm/hex-scaffold/          -> deploy/helm/<app-name-kebab>/
 #        Hex.Scaffold.slnx                  -> <AppNamePascal>.slnx
 #        src/Hex.Scaffold.Domain/...csproj  -> src/<AppNamePascal>.Domain/...csproj
+#   4. Names the app's DATABASE after the app, in deploy/umbrella/values.yaml:
+#        databases.sql[0].name             -> <app-name-kebab>
+#        bindBuildingBlock.instanceName    -> <app-name-kebab>
+#        azureFlexibleServer.databaseName  -> dropped (the building block derives
+#                                             <name>-db from the instance name)
+#      The identity tokens in step 2 cannot reach this: the umbrella ships the
+#      template's sample instance "acct", so without this every scaffolded app
+#      provisions an Azure server called acct-<random> — no ownership, no cost
+#      attribution, and two apps' servers indistinguishable in the portal.
+#      "acct" is four characters and appears in prose, so these edits are
+#      key-anchored rather than token substitutions, and each is verified after
+#      the fact: the failure worth guarding against is a silent no-op that ships
+#      the sample name under a green build.
 #
 # DELIBERATELY NOT DONE (documented follow-up):
 #   The sample DOMAIN word "account" (AccountAggregate, AccountBatchProcessor,
@@ -145,6 +166,88 @@ while IFS= read -r -d '' p; do
     paths_renamed=$((paths_renamed + 1))
   fi
 done < <(find "$DEST" -depth \( -name '*hex-scaffold*' -o -name '*Hex.Scaffold*' -o -name '*HexScaffold*' \) -print0)
+
+# ---------------------------------------------------------------------------
+# 4. Name the app's database after the app.
+# ---------------------------------------------------------------------------
+# The identity tokens above are PascalCase/kebab and cannot reach the database
+# name: the umbrella ships the template's sample instance, "acct". Left alone,
+# every scaffolded app provisions an Azure server called acct-<random> — no
+# ownership, no cost attribution, and two apps' servers indistinguishable in the
+# portal. (Observed live on aks-test: orders-v4 was running against
+# acct-6584520516bb.)
+#
+# "acct" is four characters and appears in prose throughout this file, so a token
+# substitution like the ones above is not safe here. Each edit is anchored to its
+# key, and the post-conditions below fail the render if an anchor stopped
+# matching — the failure mode worth guarding is not a bad rewrite but a silent
+# no-op that ships the sample name under a green build.
+UMBRELLA_VALUES="$DEST/deploy/umbrella/values.yaml"
+if [ -f "$UMBRELLA_VALUES" ]; then
+  # Azure Flexible Server names are capped at 63 characters and the Composition
+  # appends a 13-character uniquifier (observed: acct-78f5fa105d75). Refuse here
+  # rather than let Crossplane reject the server ~10 minutes into a deploy.
+  if [ "${#APP_KEBAB}" -gt 50 ]; then
+    echo "error: app-name-kebab '$APP_KEBAB' is ${#APP_KEBAB} chars; max 50" >&2
+    echo "       (Azure caps server names at 63 and the platform adds a 13-char suffix)" >&2
+    exit 1
+  fi
+
+  # The name line carries a trailing comment naming the Secrets it produces. It
+  # is replaced wholesale rather than patched: a comment left saying "XR acct"
+  # beside `name: orders-v4` would ship a scaffolded repo whose documentation
+  # contradicts its own config, which is the exact class of staleness that made
+  # this bug expensive to find.
+  sed -i.bak \
+    -e "s|^      - name: acct.*$|      - name: ${APP_KEBAB}               # -> XR ${APP_KEBAB}, Secrets ${APP_KEBAB}-postgres-conn + ${APP_KEBAB}-admin-password|" \
+    -e "s|^\(      instanceName: \)acct$|\1${APP_KEBAB}|" \
+    -e "/^          databaseName: acct-db$/d" \
+    "$UMBRELLA_VALUES"
+  rm -f "$UMBRELLA_VALUES.bak"
+
+  # Post-conditions. Both keys must now carry the app name, and the dropped
+  # databaseName must be gone — the building block defaults it to <name>-db, so
+  # deleting it removes a restatement instead of renaming one. Values are read
+  # back with trailing comments and whitespace stripped.
+  strip() { sed -e 's|[[:space:]]*#.*$||' -e 's|[[:space:]]*$||'; }
+  db_name=$(sed -n 's|^      - name: ||p' "$UMBRELLA_VALUES" | head -1 | strip)
+  bind_name=$(sed -n 's|^      instanceName: ||p' "$UMBRELLA_VALUES" | head -1 | strip)
+  for pair in "databases.sql[0].name:${db_name}" "bindBuildingBlock.instanceName:${bind_name}"; do
+    field="${pair%%:*}"; got="${pair#*:}"
+    if [ "$got" != "$APP_KEBAB" ]; then
+      echo "error: ${field} is '${got}', expected '${APP_KEBAB}'" >&2
+      echo "       the umbrella layout changed and this rewrite silently missed it" >&2
+      exit 1
+    fi
+  done
+  if grep -q '^          databaseName:' "$UMBRELLA_VALUES"; then
+    echo "error: databaseName survived the rewrite; it must be dropped so the" >&2
+    echo "       building block derives <name>-db from the instance name" >&2
+    exit 1
+  fi
+  echo "scaffold-render: database named '${APP_KEBAB}' (XR + bind)"
+
+  # Optional sizing, passed through from the scaffold workflow's inputs. Unset
+  # leaves the template's value, so the platform default stays in one place.
+  for spec in "size:${DB_SIZE:-}" "version:${DB_VERSION:-}" "storageMb:${DB_STORAGE_MB:-}"; do
+    key="${spec%%:*}"; val="${spec#*:}"
+    [ -z "$val" ] && continue
+    case "$key" in
+      version) repl="\"${val}\"" ;;   # the XRD types version as a string
+      *)       repl="${val}" ;;
+    esac
+    sed -i.bak -e "s|^\(          ${key}: \).*$|\1${repl}|" "$UMBRELLA_VALUES"
+    rm -f "$UMBRELLA_VALUES.bak"
+    grep -q "^          ${key}: ${repl}$" "$UMBRELLA_VALUES" \
+      || { echo "error: failed to set azureFlexibleServer.${key}=${val}" >&2; exit 1; }
+    echo "scaffold-render: azureFlexibleServer.${key}=${val}"
+  done
+else
+  # Not fatal: the template could legitimately be rendered without the umbrella
+  # (a chart-only consumer), and failing would break that. Say so loudly instead
+  # of leaving the caller to infer it from a database that never appears.
+  echo "scaffold-render: WARNING no deploy/umbrella/values.yaml — database not named" >&2
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
