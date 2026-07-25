@@ -141,6 +141,73 @@ jobs:
           fi
           echo "bind fails closed without a host, as intended"
 
+      - name: Assert instanceName derives all four building-block refs
+        run: |
+          # One knob must fan out to the four Secret refs the SQL building block
+          # composes. The XR name and these refs are otherwise independent values
+          # restating one fact, and a rename that misses one yields an app waiting
+          # forever on a Secret nothing will create.
+          helm template acct deploy/helm/hex-scaffold \
+            --set postgres.bindBuildingBlock.enabled=true \
+            --set postgres.bindBuildingBlock.instanceName=orders-v3 \
+            --set migrations.enabled=true \
+            --set migrations.wait.enabled=true > /tmp/bind-derived.yaml
+
+          # host/username/dbname come from <instance>-postgres-conn; the
+          # provider-generated password from <instance>-admin-password.
+          for pair in 'orders-v3-postgres-conn:host' \
+                      'orders-v3-postgres-conn:username' \
+                      'orders-v3-postgres-conn:dbname' \
+                      'orders-v3-admin-password:password'; do
+            secret="${pair%%:*}"; key="${pair##*:}"
+            if ! grep -A1 "name: \"${secret}\"" /tmp/bind-derived.yaml | grep -q "key: \"${key}\""; then
+              echo "::error::instanceName did not derive ${secret} -> ${key}" && exit 1
+            fi
+          done
+
+          # The migration Job's wait initContainer (G-T7) takes PGHOST from the
+          # SAME resolver. If the derivation is ever applied where the refs are
+          # read instead of once up front, this container silently regresses to an
+          # empty literal host — a bind that is syntactically fine and wrong.
+          if ! awk '/name: wait-for-db/,/WAIT_TIMEOUT/' /tmp/bind-derived.yaml \
+               | grep -A3 'name: PGHOST' | grep -q 'secretKeyRef'; then
+            echo "::error::the wait initContainer's PGHOST is not a secretKeyRef — the shared resolver regressed" && exit 1
+          fi
+
+          # Credentials must never reach the wait container.
+          if awk '/name: wait-for-db/,/WAIT_TIMEOUT/' /tmp/bind-derived.yaml | grep -q 'PGPASSWORD'; then
+            echo "::error::the wait initContainer was handed a credential" && exit 1
+          fi
+          echo "instanceName derives all four refs; the wait initContainer shares the resolver"
+
+      - name: Assert mixing instanceName with cloudnativepg literals fails closed
+        run: |
+          # instanceName derives the azure-flexibleserver Secret layout; the
+          # literals are the cloudnativepg one. No contract spans both (ADR-0020),
+          # so setting both is ambiguous and must not render.
+          if helm template acct deploy/helm/hex-scaffold \
+               --set postgres.bindBuildingBlock.enabled=true \
+               --set postgres.bindBuildingBlock.instanceName=orders-v3 \
+               --set postgres.bindBuildingBlock.host=acct-rw > /dev/null 2>&1; then
+            echo "::error::instanceName + a literal host rendered — the engine-mixing guard is gone" && exit 1
+          fi
+          echo "mixing instanceName with a literal fails closed, as intended"
+
+      - name: Assert an explicit ref still overrides the derivation
+        run: |
+          # The derivation is a default, not a cage: an unusual Secret layout must
+          # stay expressible without abandoning instanceName for the other three.
+          helm template acct deploy/helm/hex-scaffold \
+            --set postgres.bindBuildingBlock.enabled=true \
+            --set postgres.bindBuildingBlock.instanceName=orders-v3 \
+            --set postgres.bindBuildingBlock.hostFrom.name=custom-conn \
+            --set postgres.bindBuildingBlock.hostFrom.key=fqdn > /tmp/bind-override.yaml
+          grep -q 'name: "custom-conn"' /tmp/bind-override.yaml \
+            || { echo "::error::an explicit hostFrom did not override the derivation" && exit 1; }
+          grep -q 'name: "orders-v3-admin-password"' /tmp/bind-override.yaml \
+            || { echo "::error::overriding one ref discarded the other derived refs" && exit 1; }
+          echo "explicit refs win; the remaining refs stay derived"
+
   build-and-push:
     name: build + publish to GHCR
     runs-on: ubuntu-latest
