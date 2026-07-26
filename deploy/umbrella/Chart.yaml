@@ -19,14 +19,43 @@ type: application
 # 0.3.0 is NOT breaking: the bind block collapsed from four secretKeyRefs to the
 # single hex-scaffold 0.3.0 `instanceName` knob. Same Secrets, same keys, same
 # rendered output — one fact instead of five copies of it.
-version: 0.3.0
+#
+# 0.4.0 IS breaking for anyone holding a values overlay: the application subchart
+# is aliased `app`, so `hex-scaffold.replicaCount` becomes `app.replicaCount`.
+#
+# What this does to an EXISTING release, measured by diffing the render rather
+# than reasoned about:
+#   * no object is renamed — `nameOverride` in values.yaml cancels the alias
+#     reaching `.Chart.Name`, which on its own turned `<app>` into `<app>-app`
+#     and would have made ArgoCD delete and recreate the Deployment/Service/Job;
+#   * spec.selector.matchLabels is UNCHANGED (it is built from
+#     app.kubernetes.io/name, which honours nameOverride), so the immutable field
+#     does not move and `helm upgrade` applies cleanly;
+#   * the `helm.sh/chart` label, the container name, and the config/secret
+#     checksum annotations DO change, so pods roll once.
+# One rolling restart, no recreate, no data touched.
+version: 0.4.0
 appVersion: "latest"
 kubeVersion: ">=1.27.0"
 
 dependencies:
   # The application. Local path — this umbrella ships inside the app repo
   # (rendered from the net-hexagonal template), so the app's own CI packages it.
+  #
+  # ALIASED `app`, and the alias is the whole point. Helm keys a subchart's
+  # values by its alias when it has one and by its chart name otherwise — and
+  # this chart's NAME is an identity token the scaffolder rewrites, so without an
+  # alias a scaffolded app's values live under `orders-v3:` while the template's
+  # live under `hex-scaffold:`. Nothing outside the chart can then address the
+  # application by a fixed path: the platform's tunable allowlist is static
+  # configuration and cannot enumerate the names of apps that do not exist yet.
+  # The alias makes `app.*` the address for every chart rendered from this
+  # template, forever.
+  #
+  # Values addressed to a subchart key that does not exist are DISCARDED BY HELM
+  # WITHOUT AN ERROR, so every symptom of getting this wrong is silent.
   - name: hex-scaffold
+    alias: app
     version: "0.3.0"
     repository: "file://../helm/hex-scaffold"
 
