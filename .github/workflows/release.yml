@@ -282,6 +282,39 @@ jobs:
           done < <(grep -oE 'image: "?[^"[:space:]]+' /tmp/scaffolded.yaml | sed -E 's/^image: "?//' | sort -u)
           echo "scaffolded app provisions orders-ci / orders-ci-db (medium/15/65536) and runs its own image"
 
+      - name: Assert the app subchart is addressable as `app` and renders unchanged
+        run: |
+          set -euo pipefail
+          # The alias is what makes the application addressable by a FIXED path
+          # from outside the chart. Its own name is an identity token the
+          # scaffolder rewrites, so without the alias the platform's static
+          # allowlist would have to enumerate app names that do not exist yet.
+          got="$(yq -r '.dependencies[] | select(.repository | test("^file://")) | .alias // .name' deploy/umbrella/Chart.yaml)"
+          [ "$got" = "app" ] || { echo "::error::the app subchart resolves to values key '$got', expected 'app'" && exit 1; }
+
+          # Aliasing sets the subchart's .Chart.Name to the alias, and the
+          # fullname helper is built from it — so the alias alone renamed every
+          # workload (orders-v3 -> orders-v3-app). nameOverride cancels that, and
+          # this asserts it: a rename here means ArgoCD deleting and recreating a
+          # live app's Deployment, Service and Job.
+          helm dependency update deploy/umbrella >/dev/null
+          helm template hex-scaffold deploy/umbrella > /tmp/aliased.yaml
+          for want in hex-scaffold hex-scaffold-migrate hex-scaffold-sqldatabase; do
+            grep -qE "^  name: ${want}$" /tmp/aliased.yaml \
+              || { echo "::error::expected a rendered object named '${want}'; the alias leaked into object names" && exit 1; }
+          done
+          if grep -qE '^  name: hex-scaffold-app' /tmp/aliased.yaml; then
+            echo "::error::the alias reached .Chart.Name — nameOverride is not compensating" && exit 1
+          fi
+
+          # spec.selector.matchLabels is IMMUTABLE on an existing Deployment. It
+          # is built from app.kubernetes.io/name, which honours nameOverride —
+          # assert it, because this is the one difference that would turn an
+          # upgrade into a delete-and-recreate.
+          sel="$(yq -r 'select(.kind == "Deployment") | .spec.selector.matchLabels["app.kubernetes.io/name"]' /tmp/aliased.yaml | head -1)"
+          [ "$sel" = "hex-scaffold" ] || { echo "::error::Deployment selector name is '$sel', expected 'hex-scaffold' — the alias reached an immutable field" && exit 1; }
+          echo "app subchart is addressable as 'app'; object names and the Deployment selector are unchanged"
+
       - name: Assert an explicit ref still overrides the derivation
         run: |
           # The derivation is a default, not a cage: an unusual Secret layout must
@@ -504,11 +537,14 @@ jobs:
           IMAGE="$(printf '%s/%s' "$REGISTRY" "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
           # Both the app and the migration Job run the same image; the migration
           # bundle is baked into it. digest wins over tag in the chart helpers.
+          # `.app` is the subchart's ALIAS, so these paths are stable in this
+          # repo and in every app scaffolded from it. They used to be
+          # `.hex-scaffold`, which the scaffolder rewrites to the app's own name.
           DIGEST="$DIGEST" IMAGE="$IMAGE" yq -i '
-            .hex-scaffold.image.repository = strenv(IMAGE) |
-            .hex-scaffold.image.digest = strenv(DIGEST) |
-            .hex-scaffold.migrations.image.repository = strenv(IMAGE) |
-            .hex-scaffold.migrations.image.digest = strenv(DIGEST)
+            .app.image.repository = strenv(IMAGE) |
+            .app.image.digest = strenv(DIGEST) |
+            .app.migrations.image.repository = strenv(IMAGE) |
+            .app.migrations.image.digest = strenv(DIGEST)
           ' "$UMBRELLA_DIR/values.yaml"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "Pinned image: ${IMAGE}@${DIGEST}"

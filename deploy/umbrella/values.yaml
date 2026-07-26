@@ -2,7 +2,7 @@
 # hex-scaffold-umbrella / values.yaml
 #
 # ONE name, stated twice: sqldatabase.databases.sql[0].name and
-# hex-scaffold.postgres.bindBuildingBlock.instanceName (example: "acct"). It names
+# app.postgres.bindBuildingBlock.instanceName (example: "acct"). It names
 # the PostgresInstance XR, and hex-scaffold 0.3.0 derives every Secret ref the
 # control plane composes off it — <name>-postgres-conn and <name>-admin-password.
 # Keep the two in sync; nothing else in this file repeats the name.
@@ -49,7 +49,33 @@ sqldatabase:
         # leaving a dead knob that reads as live.
 
 # --- App waves: hex-scaffold, bound to the building block. --------------------
-hex-scaffold:
+#
+# Keyed `app` because the subchart is ALIASED `app` in Chart.yaml, not because
+# the application is called that. The chart's own name is an identity token the
+# scaffolder rewrites, so this key would otherwise be `hex-scaffold` here and
+# `orders-v3` in a scaffolded app — leaving no fixed path by which the platform
+# can address the application's values. See the Chart.yaml dependency comment.
+app:
+  # nameOverride exists ONLY to cancel a side effect of that alias, and removing
+  # it renames every workload this chart deploys.
+  #
+  # Helm sets an aliased subchart's `.Chart.Name` to the alias, and the chart's
+  # fullname helper is built from it — so aliasing alone turned `orders-v3` into
+  # `orders-v3-app` and `orders-v3-migrate` into `orders-v3-app-migrate`. On a
+  # live app ArgoCD would delete and recreate the Deployment, Service and Job
+  # under new names. Restoring the chart's original name here keeps every object
+  # name — and, critically, the immutable spec.selector.matchLabels — exactly as
+  # 0.3.0 rendered them.
+  #
+  # It does NOT make the render byte-identical: `helm.sh/chart`, the container
+  # name and the config/secret checksums still carry the alias, so an existing
+  # release rolls its pods once. That is an upgrade, not a recreate.
+  #
+  # The value is an identity token on purpose: scaffold-render.sh rewrites
+  # `hex-scaffold` to the app's kebab name, so a scaffolded app gets
+  # `nameOverride: orders-v3` with no extra machinery.
+  nameOverride: hex-scaffold
+
   # Order with ArgoCD sync-waves (migration wave 1, app wave 2) so both land
   # after the infra wave (0). See hex-scaffold values.yaml `argo`.
   argo:

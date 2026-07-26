@@ -28,7 +28,7 @@ helm dependency build .        # pulls hex-scaffold (local) + the SQL building b
 | 1 | hex-scaffold migration `Job` (ArgoCD `Sync` hook) | runs only after the Cluster is `Ready` |
 | 2 | hex-scaffold `Deployment` | rolls after migrations |
 
-`hex-scaffold` is switched into sync-wave ordering by `hex-scaffold.argo.enabled=true`
+`hex-scaffold` is switched into sync-wave ordering by `app.argo.enabled=true`
 (see the app chart's `values.yaml`). With it **off** (the default) the app chart
 still deploys standalone with plain Helm pre-install hooks — the two modes
 coexist.
