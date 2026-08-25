@@ -103,7 +103,7 @@ jobs:
     steps:
       # 1. Check out THIS template repo (the render source).
       - name: Checkout template
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. Compute the CODE identities from appName, and the TARGET REPO name:
       #      APP_PASCAL — split on - _ space, capitalize each part (orders->Orders,
